@@ -1,36 +1,98 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# WhiteIndexWay
 
-## Getting Started
+Hybrid URL indexing platform built with **Next.js 16**, **MongoDB**, and a background worker queue.
 
-First, run the development server:
+## Features
+
+- **Hybrid routing** — ~30% Google Indexing API, ~70% crawl-trap discovery + IndexNow
+- **User accounts** — JWT session cookies, credit-based submissions
+- **GCP credentials** — encrypted service account storage for Indexing API lane
+- **Batch tracking** — per-URL status, route type, and error messages
+- **MongoDB job queue** — `ProcessingJob` collection processed by `npm run worker`
+
+## Quick start
+
+### 1. Environment
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Edit `.env.local`:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `MONGODB_URI` — MongoDB connection string
+- `AUTH_SECRET` — at least 32 random characters
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 2. Install & run
 
-## Learn More
+```bash
+npm install
+npm run seed    # optional: default seed domain
+npm run dev     # http://localhost:3000
+```
 
-To learn more about Next.js, take a look at the following resources:
+**Development:** URL batches process automatically when you submit (no separate worker needed).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Optional** — continuous queue polling (retries, large backlogs):
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run worker       # standalone worker
+npm run dev:all      # dev server + worker together
+```
 
-## Deploy on Vercel
+If the dev server acts oddly (missing API routes), run `npm run dev:clean` to reset the Turbopack cache.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 3. Google Indexing API (optional)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Create a GCP project and enable **Indexing API**
+2. Create a service account and download JSON key
+3. Add the service account as **Owner** in Google Search Console for your site
+4. In the app: **Dashboard → Settings** → paste JSON and property URL
+
+Use only for pages with `JobPosting` or `BroadcastEvent` schema per [Google's guidelines](https://developers.google.com/search/apis/indexing-api/v3/using-api).
+
+## Project structure
+
+```
+app/
+  api/          # REST API (auth, submit, batches, credentials, worker)
+  dashboard/    # Protected UI
+  (auth)/       # Login & register
+components/     # UI + layout
+lib/
+  services/     # Indexing API, IndexNow, crawl trap, batch processor
+  auth/         # Session JWT
+models/         # Mongoose schemas
+workers/        # Background queue processor
+scripts/        # DB seed
+```
+
+## API overview
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/auth/register` | POST | Create account |
+| `/api/auth/login` | POST | Sign in |
+| `/api/index/submit` | POST | Submit URL batch |
+| `/api/batches` | GET | List batches |
+| `/api/batches/[id]` | GET | Batch detail + URLs |
+| `/api/credentials` | GET/POST | GCP credentials |
+| `/api/worker/process` | POST | Cron trigger (set `WORKER_SECRET`) |
+
+## Production notes
+
+- Run `npm run worker` as a separate process (PM2, systemd, or container)
+- Set `WORKER_SECRET` and call `POST /api/worker/process` from cron if you prefer HTTP triggers
+- Configure `INDEXNOW_HOST` and `INDEXNOW_KEY` for cross-engine pings
+- Add real seed domains via MongoDB `SeedDomain` collection or extend `scripts/seed.ts`
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Development server (auto-processes jobs on submit) |
+| `npm run dev:clean` | Clear `.next` cache and start dev |
+| `npm run dev:all` | Dev server + background worker |
+| `npm run build` | Production build |
+| `npm run worker` | Process job queue (required in production) |
+| `npm run seed` | Seed default crawl-trap domain |

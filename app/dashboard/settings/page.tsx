@@ -1,0 +1,153 @@
+"use client";
+
+import { FormEvent, useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { api, ApiError } from "@/lib/api/client";
+
+interface Credential {
+  id: string;
+  label: string;
+  propertyUrl: string;
+  clientEmail: string;
+  isActive: boolean;
+  dailyUsage: number;
+}
+
+export default function SettingsPage() {
+  const [credentials, setCredentials] = useState<Credential[]>([]);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  function loadCredentials() {
+    api
+      .get<{ credentials: Credential[] }>("/api/credentials")
+      .then((d) => setCredentials(d.credentials))
+      .catch(console.error);
+  }
+
+  useEffect(() => {
+    loadCredentials();
+  }, []);
+
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    setLoading(true);
+    const form = new FormData(e.currentTarget);
+    try {
+      await api.post("/api/credentials", {
+        label: form.get("label"),
+        propertyUrl: form.get("propertyUrl"),
+        serviceAccountJson: form.get("serviceAccountJson"),
+      });
+      setSuccess("Credential saved.");
+      e.currentTarget.reset();
+      loadCredentials();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to save.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function removeCredential(id: string) {
+    if (!confirm("Delete this credential?")) return;
+    await api.delete(`/api/credentials/${id}`);
+    loadCredentials();
+  }
+
+  return (
+    <div className="mx-auto max-w-2xl space-y-6">
+      <h1 className="text-2xl font-bold text-white">Settings</h1>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Google Indexing API</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-4 text-sm text-zinc-400">
+            Add a GCP service account with Indexing API enabled. The site must be verified in
+            Search Console. Use only for JobPosting or BroadcastEvent pages per Google policy.
+          </p>
+          <form onSubmit={onSubmit} className="space-y-4">
+            {error && (
+              <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+                {error}
+              </p>
+            )}
+            {success && (
+              <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400">
+                {success}
+              </p>
+            )}
+            <div>
+              <label className="mb-1 block text-sm text-zinc-400">Label</label>
+              <Input name="label" placeholder="Production site" required />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm text-zinc-400">Property URL</label>
+              <Input
+                name="propertyUrl"
+                type="url"
+                placeholder="https://yoursite.com"
+                required
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm text-zinc-400">
+                Service account JSON
+              </label>
+              <textarea
+                name="serviceAccountJson"
+                required
+                rows={6}
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-900/80 p-3 font-mono text-xs"
+                placeholder='{"type":"service_account",...}'
+              />
+            </div>
+            <Button type="submit" disabled={loading}>
+              {loading ? "Saving…" : "Save credential"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {credentials.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Saved credentials</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {credentials.map((c) => (
+              <div
+                key={c.id}
+                className="flex items-start justify-between rounded-lg border border-zinc-800 p-4"
+              >
+                <div>
+                  <p className="font-medium">{c.label}</p>
+                  <p className="text-sm text-zinc-400">{c.propertyUrl}</p>
+                  <p className="text-xs text-zinc-500">{c.clientEmail}</p>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Daily usage: {c.dailyUsage} / 200
+                  </p>
+                </div>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  type="button"
+                  onClick={() => removeCredential(c.id)}
+                >
+                  Delete
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
