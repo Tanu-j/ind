@@ -4,10 +4,32 @@ export interface PreflightResult {
   url: string;
   ok: boolean;
   statusCode?: number;
+  fetchMs?: number;
   errors: string[];
   warnings: string[];
   schemaTypes: string[];
   googleApiEligible: boolean;
+}
+
+const SLOW_RESPONSE_MS = 2500;
+
+function normalizeUrlForCompare(u: string): string {
+  try {
+    const x = new URL(u);
+    x.hash = "";
+    const path = x.pathname.replace(/\/$/, "") || "/";
+    return `${x.protocol}//${x.host}${path === "/" ? "" : path}${x.search}`;
+  } catch {
+    return u;
+  }
+}
+
+function extractCanonicalHref(html: string): string | null {
+  const m = /<link[^>]*rel\s*=\s*["']canonical["'][^>]*>/i.exec(html);
+  if (!m) return null;
+  const tag = m[0];
+  const hrefM = /href\s*=\s*["']([^"']+)["']/i.exec(tag);
+  return hrefM?.[1]?.trim() ?? null;
 }
 
 export async function runPreflight(url: string): Promise<PreflightResult> {
@@ -15,17 +37,27 @@ export async function runPreflight(url: string): Promise<PreflightResult> {
   const warnings: string[] = [];
   let statusCode: number | undefined;
   let html = "";
+  let finalUrl = url;
+  let fetchMs: number | undefined;
 
   try {
+    const t0 = Date.now();
     const res = await fetch(url, {
       method: "GET",
       redirect: "follow",
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(12_000),
       headers: { "User-Agent": "WhiteIndexWay-Preflight/1.0" },
     });
+    fetchMs = Date.now() - t0;
+    finalUrl = res.url;
     statusCode = res.status;
     if (!res.ok) {
       errors.push(`HTTP ${res.status} — page must return 200.`);
+    }
+    if (fetchMs > SLOW_RESPONSE_MS) {
+      warnings.push(
+        `Slow response (${fetchMs} ms) — crawlers may time out; consider CDN or lighter pages.`
+      );
     }
     const contentType = res.headers.get("content-type") ?? "";
     if (contentType.includes("text/html")) {
@@ -33,6 +65,22 @@ export async function runPreflight(url: string): Promise<PreflightResult> {
     }
   } catch (err) {
     errors.push(err instanceof Error ? err.message : "Could not fetch URL.");
+  }
+
+  if (html) {
+    const canon = extractCanonicalHref(html);
+    if (canon) {
+      try {
+        const abs = new URL(canon, finalUrl).href;
+        if (normalizeUrlForCompare(abs) !== normalizeUrlForCompare(finalUrl)) {
+          warnings.push(
+            `Canonical points elsewhere (${abs}) — Google usually indexes the canonical target, not this URL.`
+          );
+        }
+      } catch {
+        warnings.push("Canonical href is present but could not be parsed.");
+      }
+    }
   }
 
   if (html) {
@@ -63,6 +111,7 @@ export async function runPreflight(url: string): Promise<PreflightResult> {
     url,
     ok: errors.length === 0,
     statusCode,
+    fetchMs,
     errors,
     warnings,
     schemaTypes,

@@ -19,6 +19,13 @@ interface UrlRow {
     googleIndexedAt?: string;
     preflight?: { warnings?: string[]; googleApiEligible?: boolean };
     gscInspection?: { verdict?: string; coverageState?: string };
+    gscInspectionTimeline?: Array<{
+      at?: string;
+      round?: number;
+      verdict?: string;
+      coverageState?: string;
+      error?: string;
+    }>;
   };
 }
 
@@ -140,13 +147,32 @@ export default function BatchDetailPage() {
                 )}
                 {u.responseMeta?.gscInspection && (
                   <p className="w-full text-xs text-zinc-500">
-                    GSC:{" "}
+                    GSC (latest):{" "}
                     {typeof u.responseMeta.gscInspection === "object"
                       ? (u.responseMeta.gscInspection as { verdict?: string }).verdict ??
                         JSON.stringify(u.responseMeta.gscInspection)
                       : String(u.responseMeta.gscInspection)}
                   </p>
                 )}
+                {u.responseMeta?.gscInspectionTimeline &&
+                  u.responseMeta.gscInspectionTimeline.length > 0 && (
+                    <div className="w-full rounded border border-zinc-800/80 bg-zinc-950/40 px-2 py-2">
+                      <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                        GSC inspection timeline
+                      </p>
+                      <ul className="space-y-1 font-mono text-[10px] text-zinc-500">
+                        {u.responseMeta.gscInspectionTimeline.map((row, i) => (
+                          <li key={`${row.at}-${i}`}>
+                            {row.at ? new Date(row.at).toLocaleTimeString() : "—"} · round{" "}
+                            {row.round ?? i + 1}
+                            {row.verdict ? ` · ${row.verdict}` : ""}
+                            {row.coverageState ? ` · ${row.coverageState}` : ""}
+                            {row.error ? ` · ${row.error}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 {u.responseMeta?.preflight?.warnings?.map((w) => (
                   <p key={w} className="w-full text-xs text-amber-500/80">
                     {w}

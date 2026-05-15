@@ -9,7 +9,7 @@ import {
 import { splitHybridUrls, parseUrlList } from "@/lib/utils";
 import { resolveGcpCredential } from "@/lib/services/platform-key-pool";
 import { runPreflightBatch } from "@/lib/services/preflight";
-import { saveBatchSitemap } from "@/lib/services/batch-sitemap";
+import { saveBatchSitemap, getBatchSitemapPublicUrl } from "@/lib/services/batch-sitemap";
 import {
   User,
   IndexBatch,
@@ -52,8 +52,11 @@ type JobInsert = {
     batchId?: string;
     sitemapUrl?: string;
     feedUrl?: string;
+    inspectRound?: number;
   };
   scheduledAt?: Date;
+  maxAttempts?: number;
+  processingPriority?: number;
 };
 
 function planUrlRoutes(
@@ -178,6 +181,14 @@ export async function createIndexingBatch(
     const credId = credential?.id;
     const credSource = credential?.source;
     const propertyUrl = credential?.propertyUrl;
+    const jobPriority = user.processingPriority ?? 0;
+
+    const gscInspectPlan = [
+      { delay: 30_000, round: 1 },
+      { delay: 120_000, round: 2 },
+      { delay: 600_000, round: 3 },
+      { delay: 3_600_000, round: 4 },
+    ];
 
     for (const url of urls) {
       const indexedUrlId = urlIdByUrl.get(url)!;
@@ -188,6 +199,8 @@ export async function createIndexingBatch(
           indexedUrlId,
           userId: user._id,
           type: "API_INDEXING",
+          processingPriority: jobPriority,
+          maxAttempts: 8,
           payload: {
             url,
             credentialId: credId,
@@ -200,22 +213,29 @@ export async function createIndexingBatch(
           indexedUrlId,
           userId: user._id,
           type: "GOOGLE_VERIFY",
+          processingPriority: jobPriority,
+          maxAttempts: 6,
           payload: { url, credentialId: credId, credentialSource: credSource },
           scheduledAt: new Date(Date.now() + 15_000),
         });
-        jobs.push({
-          batchId: batchDoc._id,
-          indexedUrlId,
-          userId: user._id,
-          type: "GSC_INSPECT",
-          payload: {
-            url,
-            credentialId: credId,
-            credentialSource: credSource,
-            propertyUrl,
-          },
-          scheduledAt: new Date(Date.now() + 45_000),
-        });
+        for (const { delay, round } of gscInspectPlan) {
+          jobs.push({
+            batchId: batchDoc._id,
+            indexedUrlId,
+            userId: user._id,
+            type: "GSC_INSPECT",
+            processingPriority: jobPriority,
+            maxAttempts: 5,
+            payload: {
+              url,
+              credentialId: credId,
+              credentialSource: credSource,
+              propertyUrl,
+              inspectRound: round,
+            },
+            scheduledAt: new Date(Date.now() + delay),
+          });
+        }
       }
 
       if (mode === "turbo") {
@@ -269,16 +289,17 @@ export async function createIndexingBatch(
     }
 
     if (credential && usesFullGooglePipeline(mode)) {
-      const { getBatchSitemapPublicUrl } = await import("@/lib/services/batch-sitemap");
+      const sitemapUrl = await getBatchSitemapPublicUrl(batchIdStr, userId);
       jobs.push({
         batchId: batchDoc._id,
         userId: user._id,
         type: "GSC_SITEMAP",
+        processingPriority: jobPriority,
         payload: {
           credentialId: credId,
           credentialSource: credSource,
           propertyUrl,
-          sitemapUrl: getBatchSitemapPublicUrl(batchIdStr),
+          sitemapUrl,
           batchId: batchIdStr,
         },
       });
@@ -312,7 +333,16 @@ export async function createIndexingBatch(
       );
     }
 
-    await ProcessingJob.insertMany(jobs, { session });
+    await ProcessingJob.insertMany(
+      jobs.map((j) => ({
+        ...j,
+        processingPriority: j.processingPriority ?? jobPriority,
+        maxAttempts:
+          j.maxAttempts ??
+          (j.type === "API_INDEXING" ? 8 : j.type === "GSC_INSPECT" ? 5 : 3),
+      })),
+      { session }
+    );
     await session.commitTransaction();
 
     return {

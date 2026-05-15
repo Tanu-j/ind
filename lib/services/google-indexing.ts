@@ -1,9 +1,11 @@
 import { google } from "googleapis";
+import { classifyUnknownIndexingError, type ClassifiedIndexingError } from "./google-indexing-errors";
 
 export interface IndexingApiResult {
   success: boolean;
   data?: unknown;
   error?: string;
+  classified?: ClassifiedIndexingError;
 }
 
 function createIndexingClient(serviceAccountJson: string) {
@@ -33,8 +35,12 @@ export async function publishUrlUpdate(
 
     return { success: true, data: response.data };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Indexing API request failed.";
-    return { success: false, error: message };
+    const classified = classifyUnknownIndexingError(err);
+    return {
+      success: false,
+      error: classified.userMessage,
+      classified,
+    };
   }
 }
 

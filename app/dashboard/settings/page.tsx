@@ -131,6 +131,8 @@ export default function SettingsPage() {
 
       <IndexNowSettings />
 
+      <EnterpriseSettings />
+
       {credentials.length > 0 && (
         <Card>
           <CardHeader>
@@ -179,6 +181,156 @@ export default function SettingsPage() {
         </Card>
       )}
     </div>
+  );
+}
+
+function EnterpriseSettings() {
+  const [sitemapBase, setSitemapBase] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
+  const [hasSecret, setHasSecret] = useState(false);
+  const [priority, setPriority] = useState(0);
+  const [discoverSite, setDiscoverSite] = useState("");
+  const [discovered, setDiscovered] = useState<string[]>([]);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    api
+      .get<{
+        sitemapPublicBaseUrl: string;
+        webhookUrl: string;
+        hasWebhookSecret: boolean;
+        processingPriority: number;
+      }>("/api/settings/enterprise")
+      .then((d) => {
+        setSitemapBase(d.sitemapPublicBaseUrl ?? "");
+        setWebhookUrl(d.webhookUrl ?? "");
+        setHasSecret(d.hasWebhookSecret);
+        setPriority(d.processingPriority ?? 0);
+      })
+      .catch(() => null);
+  }, []);
+
+  async function saveEnterprise(e: FormEvent) {
+    e.preventDefault();
+    setErr("");
+    setMsg("");
+    try {
+      await api.patch("/api/settings/enterprise", {
+        sitemapPublicBaseUrl: sitemapBase || "",
+        webhookUrl: webhookUrl || "",
+        webhookSecret: webhookSecret || "",
+        processingPriority: priority,
+      });
+      setMsg("Enterprise settings saved.");
+      setWebhookSecret("");
+      setHasSecret(hasSecret || Boolean(webhookSecret.trim()));
+    } catch (error) {
+      setErr(error instanceof ApiError ? error.message : "Save failed.");
+    }
+  }
+
+  async function discover() {
+    setErr("");
+    setDiscovered([]);
+    if (!discoverSite.trim()) return;
+    try {
+      const d = await api.get<{ sitemaps: string[] }>(
+        `/api/domain/sitemaps?site=${encodeURIComponent(discoverSite.trim())}`
+      );
+      setDiscovered(d.sitemaps);
+    } catch (error) {
+      setErr(error instanceof ApiError ? error.message : "Discovery failed.");
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Enterprise · trust &amp; scale</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <p className="text-sm text-zinc-400">
+          <strong className="text-zinc-300">Public sitemap URL</strong>: if you CNAME a hostname to
+          this app, set it here so Search Console sees URLs on your property. Otherwise the app uses{" "}
+          <code className="text-violet-400">APP_URL</code>.
+        </p>
+        <p className="text-sm text-zinc-400">
+          <strong className="text-zinc-300">Webhooks</strong>: we POST{" "}
+          <code className="text-violet-400">url.indexed</code> when Google metadata or GSC inspection
+          shows indexed. Sign with optional HMAC SHA-256 in{" "}
+          <code className="text-violet-400">X-WhiteIndexWay-Signature: sha256=&lt;hex&gt;</code>.
+        </p>
+        <form onSubmit={saveEnterprise} className="space-y-4">
+          {err && <p className="text-sm text-red-400">{err}</p>}
+          {msg && <p className="text-sm text-emerald-400">{msg}</p>}
+          <div>
+            <label className="mb-1 block text-sm text-zinc-400">Sitemap public base URL</label>
+            <Input
+              value={sitemapBase}
+              onChange={(e) => setSitemapBase(e.target.value)}
+              placeholder="https://index.yourcompany.com"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-zinc-400">Webhook URL (HTTPS)</label>
+            <Input
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+              placeholder="https://your-server.com/hooks/indexing"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-zinc-400">
+              Webhook secret {hasSecret && "(saved — leave blank to keep)"}
+            </label>
+            <Input
+              value={webhookSecret}
+              onChange={(e) => setWebhookSecret(e.target.value)}
+              type="password"
+              placeholder="Optional shared secret"
+              autoComplete="new-password"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-zinc-400">
+              Queue priority (0–100, higher runs first)
+            </label>
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={priority}
+              onChange={(e) => setPriority(Number(e.target.value))}
+            />
+          </div>
+          <Button type="submit">Save enterprise settings</Button>
+        </form>
+
+        <div className="border-t border-zinc-800 pt-6">
+          <p className="mb-2 text-sm text-zinc-400">Discover sitemaps (robots.txt + common paths)</p>
+          <div className="flex flex-wrap gap-2">
+            <Input
+              value={discoverSite}
+              onChange={(e) => setDiscoverSite(e.target.value)}
+              placeholder="https://yoursite.com"
+              className="max-w-md"
+            />
+            <Button type="button" variant="secondary" onClick={discover}>
+              Discover
+            </Button>
+          </div>
+          {discovered.length > 0 && (
+            <ul className="mt-3 space-y-1 font-mono text-xs text-zinc-500">
+              {discovered.map((u) => (
+                <li key={u}>{u}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

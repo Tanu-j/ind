@@ -1,5 +1,5 @@
 import { connectDB } from "@/lib/db/mongodb";
-import { BatchSitemap } from "@/models";
+import { BatchSitemap, User } from "@/models";
 
 export function buildUrlSetXml(urls: string[]): string {
   const entries = urls
@@ -46,7 +46,18 @@ export async function getBatchSitemapUrls(batchId: string): Promise<string[]> {
   return doc?.urls ?? [];
 }
 
-export function getBatchSitemapPublicUrl(batchId: string): string {
-  const base = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+/** Public URL for batch sitemap — respects per-user `sitemapPublicBaseUrl` when set (CNAME to this app). */
+export async function getBatchSitemapPublicUrl(
+  batchId: string,
+  userId?: string
+): Promise<string> {
+  let base = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  if (userId) {
+    await connectDB();
+    const u = await User.findById(userId).select("sitemapPublicBaseUrl").lean();
+    if (u?.sitemapPublicBaseUrl?.trim()) {
+      base = u.sitemapPublicBaseUrl.replace(/\/$/, "");
+    }
+  }
   return `${base}/feeds/batch/${batchId}`;
 }

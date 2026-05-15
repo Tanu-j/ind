@@ -7,6 +7,7 @@ export interface ICreditTransaction extends Document {
   credits: number;
   amountUsd: number;
   status: "completed" | "pending" | "failed";
+  stripeCheckoutSessionId?: string;
   createdAt: Date;
 }
 
@@ -21,6 +22,7 @@ const CreditTransactionSchema = new Schema<ICreditTransaction>(
       enum: ["completed", "pending", "failed"],
       default: "completed",
     },
+    stripeCheckoutSessionId: { type: String, sparse: true, index: true },
   },
   { timestamps: { createdAt: true, updatedAt: false } }
 );

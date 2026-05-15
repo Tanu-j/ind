@@ -45,7 +45,10 @@ function escapeXml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export function generateCrawlTrapContent(targetUrl: string): CrawlTrapItem {
+export function generateCrawlTrapContent(
+  targetUrl: string,
+  relatedUrls: string[] = []
+): CrawlTrapItem {
   let hostname = "resource";
   try {
     hostname = new URL(targetUrl).hostname;
@@ -54,7 +57,17 @@ export function generateCrawlTrapContent(targetUrl: string): CrawlTrapItem {
   }
 
   const title = `Network update: ${hostname}`;
-  const description = `Latest verified web resource reference for ${hostname}. Source: <a href="${targetUrl}">${targetUrl}</a>`;
+  const others = relatedUrls
+    .filter((u) => u && u !== targetUrl)
+    .slice(0, 5)
+    .map((u) => `<a href="${escapeXml(u)}">${escapeXml(u)}</a>`)
+    .join(" · ");
+
+  const hubLinks = others
+    ? ` Related resources in this index: ${others}.`
+    : "";
+
+  const description = `Latest verified web resource reference for ${hostname}. Source: <a href="${targetUrl}">${targetUrl}</a>${hubLinks}`;
 
   return {
     url: targetUrl,

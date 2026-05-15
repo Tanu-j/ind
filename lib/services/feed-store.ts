@@ -26,6 +26,15 @@ export async function appendFeedItem(
   }
 }
 
+export async function getRecentFeedUrls(seedDomainId: string, limit = 8): Promise<string[]> {
+  const docs = await FeedItem.find({ seedDomainId })
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .select("url")
+    .lean();
+  return docs.map((d) => d.url);
+}
+
 export async function getActiveFeedItems(limit = 100): Promise<{
   seed: { name: string; baseUrl: string };
   items: CrawlTrapItem[];

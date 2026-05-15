@@ -14,18 +14,22 @@ import {
   publishToSeedDomain,
   pingFeedDiscovery,
 } from "@/lib/services/crawl-trap";
-import { appendFeedItem } from "@/lib/services/feed-store";
+import { appendFeedItem, getRecentFeedUrls } from "@/lib/services/feed-store";
 import { refreshBatchStatus } from "@/lib/services/batch-processor";
 import {
   incrementCredentialUsage,
   resetDailyUsageIfNeeded,
+  pickAlternativePlatformKey,
 } from "@/lib/services/platform-key-pool";
+import { submitUrlToBingWebmaster } from "@/lib/services/bing-webmaster";
+import { sendIndexWebhook } from "@/lib/services/index-webhook";
 import {
   ProcessingJob,
   IndexedUrl,
   GcpCredential,
   PlatformGcpKey,
   SeedDomain,
+  User,
 } from "@/models";
 
 const DAILY_API_LIMIT = 200;
@@ -54,7 +58,7 @@ export async function processPendingJobs(): Promise<number> {
     status: "PENDING",
     scheduledAt: { $lte: new Date() },
   })
-    .sort({ scheduledAt: 1 })
+    .sort({ processingPriority: -1, scheduledAt: 1 })
     .limit(BATCH_SIZE);
 
   let processed = 0;
@@ -78,6 +82,17 @@ export async function processPendingJobs(): Promise<number> {
       const message = err instanceof Error ? err.message : "Job failed.";
       claimed.lastError = message;
 
+      if (claimed.type === "API_INDEXING" && claimed.indexedUrlId) {
+        const iu = await IndexedUrl.findById(claimed.indexedUrlId).select("status").lean();
+        if (iu?.status === "FAILED") {
+          claimed.status = "FAILED";
+          claimed.completedAt = new Date();
+          await claimed.save();
+          await refreshBatchStatus(claimed.batchId.toString());
+          continue;
+        }
+      }
+
       const softFail = ["GOOGLE_VERIFY", "GSC_INSPECT", "DISCOVERY_PING", "WEBSUB_PING"].includes(
         claimed.type
       );
@@ -96,8 +111,19 @@ export async function processPendingJobs(): Promise<number> {
         claimed.status = "COMPLETED";
         claimed.completedAt = new Date();
       } else {
+        let delayMs = 30_000 * claimed.attempts;
+        if (claimed.type === "API_INDEXING") {
+          const low = message.toLowerCase();
+          if (
+            low.includes("quota") ||
+            low.includes("rate limit") ||
+            low.includes("resource exhausted")
+          ) {
+            delayMs = Math.min(3_600_000, 60_000 * 2 ** Math.max(0, claimed.attempts - 1));
+          }
+        }
         claimed.status = "PENDING";
-        claimed.scheduledAt = new Date(Date.now() + 30_000 * claimed.attempts);
+        claimed.scheduledAt = new Date(Date.now() + delayMs);
       }
       await claimed.save();
     }
@@ -152,10 +178,7 @@ async function processApiJob(
   job: InstanceType<typeof ProcessingJob>,
   url: string
 ): Promise<void> {
-  const json = await getCredentialJson(
-    job.payload.credentialId,
-    job.payload.credentialSource
-  );
+  let json = await getCredentialJson(job.payload.credentialId, job.payload.credentialSource);
 
   if (!json) {
     if (job.indexedUrlId) {
@@ -173,7 +196,26 @@ async function processApiJob(
     if (credential) {
       await resetDailyUsageIfNeeded(credential);
       if (credential.dailyUsage >= DAILY_API_LIMIT) {
-        throw new Error("Daily Indexing API quota exceeded.");
+        const platformKey = await pickAlternativePlatformKey([]);
+        if (platformKey) {
+          job.payload.credentialSource = "platform";
+          job.payload.credentialId = platformKey._id.toString();
+          job.payload.userCredentialExhausted = true;
+          json = decryptJson(platformKey.encryptedJson);
+          await job.save();
+        } else {
+          if (job.indexedUrlId) {
+            await IndexedUrl.findByIdAndUpdate(job.indexedUrlId, {
+              status: "FAILED",
+              errorMessage:
+                "Your Google key’s daily quota (200) is exhausted and no platform pool key is available.",
+              processedAt: new Date(),
+            });
+          }
+          throw new Error(
+            "Your Google key’s daily quota (200) is exhausted and no platform pool key is available."
+          );
+        }
       }
     }
   }
@@ -182,49 +224,100 @@ async function processApiJob(
     await IndexedUrl.findByIdAndUpdate(job.indexedUrlId, { status: "PROCESSING" });
   }
 
-  const result = await publishUrlUpdate(json, url);
-
-  if (!result.success) {
-    if (job.indexedUrlId) {
-      await IndexedUrl.findByIdAndUpdate(job.indexedUrlId, {
-        status: "FAILED",
-        errorMessage: result.error,
-        processedAt: new Date(),
-      });
-    }
-    throw new Error(result.error ?? "Indexing API failed.");
+  const triedPlatformIds = new Set<string>(job.payload.triedPlatformKeyIds ?? []);
+  if (job.payload.credentialSource === "platform" && job.payload.credentialId) {
+    triedPlatformIds.add(job.payload.credentialId);
   }
 
-  if (job.payload.credentialSource === "user" && job.payload.credentialId) {
-    const credential = await GcpCredential.findById(job.payload.credentialId);
-    if (credential) {
-      await incrementCredentialUsage({
-        id: credential._id.toString(),
-        json,
-        source: "user",
-        record: credential,
+  let lastError = "";
+  for (let attempt = 0; attempt < 32; attempt++) {
+    const result = await publishUrlUpdate(json, url);
+
+    if (result.success) {
+      if (job.payload.credentialSource === "user" && job.payload.credentialId) {
+        const credential = await GcpCredential.findById(job.payload.credentialId);
+        if (credential) {
+          await incrementCredentialUsage({
+            id: credential._id.toString(),
+            json,
+            source: "user",
+            record: credential,
+          });
+        }
+      } else if (job.payload.credentialId) {
+        await incrementCredentialUsage({
+          id: job.payload.credentialId,
+          json,
+          source: "platform",
+          platformRecord: (await PlatformGcpKey.findById(job.payload.credentialId)) ?? undefined,
+        });
+      }
+
+      const bing = await submitUrlToBingWebmaster(url);
+
+      if (job.indexedUrlId) {
+        const existing = await IndexedUrl.findById(job.indexedUrlId);
+        const prev = (existing?.responseMeta as Record<string, unknown>) ?? {};
+        await IndexedUrl.findByIdAndUpdate(job.indexedUrlId, {
+          status: "SUBMITTED",
+          responseMeta: {
+            ...prev,
+            indexingApi: result.data,
+            googleNotifiedAt: new Date().toISOString(),
+            message:
+              "Google Indexing API accepted the notification (not the same as ranking or SERP presence).",
+            userCredentialExhausted: job.payload.userCredentialExhausted,
+            bingWebmaster: bing,
+          },
+          processedAt: new Date(),
+        });
+      }
+      return;
+    }
+
+    lastError = result.error ?? "Indexing API failed.";
+    const classified = result.classified;
+
+    if (
+      job.payload.credentialSource === "platform" &&
+      classified?.retryable &&
+      classified.kind === "QUOTA_OR_RATE_LIMIT"
+    ) {
+      const next = await pickAlternativePlatformKey([...triedPlatformIds]);
+      if (next) {
+        triedPlatformIds.add(next._id.toString());
+        job.payload.credentialId = next._id.toString();
+        job.payload.triedPlatformKeyIds = [...triedPlatformIds];
+        json = decryptJson(next.encryptedJson);
+        await job.save();
+        continue;
+      }
+    }
+
+    if (job.indexedUrlId) {
+      const existing = await IndexedUrl.findById(job.indexedUrlId);
+      const prev = (existing?.responseMeta as Record<string, unknown>) ?? {};
+      await IndexedUrl.findByIdAndUpdate(job.indexedUrlId, {
+        status: "FAILED",
+        errorMessage: lastError,
+        processedAt: new Date(),
+        responseMeta: {
+          ...prev,
+          indexingErrorKind: classified?.kind,
+        },
       });
     }
-  } else if (job.payload.credentialId) {
-    await incrementCredentialUsage({
-      id: job.payload.credentialId,
-      json,
-      source: "platform",
-      platformRecord: (await PlatformGcpKey.findById(job.payload.credentialId)) ?? undefined,
-    });
+    throw new Error(lastError);
   }
 
   if (job.indexedUrlId) {
     await IndexedUrl.findByIdAndUpdate(job.indexedUrlId, {
-      status: "SUBMITTED",
-      responseMeta: {
-        indexingApi: result.data,
-        googleNotifiedAt: new Date().toISOString(),
-        message: "Submitted to Google Indexing API.",
-      },
+      status: "FAILED",
+      errorMessage: lastError || "Indexing API exhausted rotation attempts.",
       processedAt: new Date(),
     });
   }
+  throw new Error(lastError || "Indexing API exhausted rotation attempts.");
 }
 
 async function processGoogleVerifyJob(
@@ -253,6 +346,17 @@ async function processGoogleVerifyJob(
           googleIndexedAt: data.latestUpdate.notifyTime,
         },
       });
+      const hookUser = await User.findById(indexedUrl.userId)
+        .select("webhookUrl webhookSecret")
+        .lean();
+      if (hookUser) {
+        await sendIndexWebhook(hookUser, {
+          event: "url.indexed",
+          url,
+          source: "google_indexing_metadata",
+          notifyTime: data.latestUpdate.notifyTime,
+        });
+      }
     }
   }
 }
@@ -274,17 +378,47 @@ async function processGscInspectJob(
   const siteUrl = job.payload.propertyUrl ?? url;
   const inspect = await inspectUrl(json, siteUrl, url);
 
+  const metaPrev = (indexedUrl.responseMeta as Record<string, unknown>) ?? {};
+  const timeline = Array.isArray(metaPrev.gscInspectionTimeline)
+    ? [...(metaPrev.gscInspectionTimeline as object[])]
+    : [];
+  timeline.push({
+    at: new Date().toISOString(),
+    round: job.payload.inspectRound ?? timeline.length + 1,
+    verdict: inspect.data?.verdict,
+    indexStatus: inspect.data?.indexStatus,
+    coverageState: inspect.data?.coverageState,
+    lastCrawlTime: inspect.data?.lastCrawlTime,
+    error: inspect.success ? undefined : inspect.error,
+  });
+
+  const becomesIndexed =
+    inspect.data?.verdict === "PASS" && indexedUrl.status === "SUBMITTED";
+
   await IndexedUrl.findByIdAndUpdate(job.indexedUrlId, {
     $set: {
       responseMeta: {
-        ...((indexedUrl.responseMeta as Record<string, unknown>) ?? {}),
-        gscInspection: inspect.data ?? inspect.error,
+        ...metaPrev,
+        gscInspection: inspect.data ?? { error: inspect.error },
+        gscInspectionTimeline: timeline,
       },
-      ...(inspect.data?.verdict === "PASS" && indexedUrl.status === "SUBMITTED"
-        ? { status: "INDEXED" as const }
-        : {}),
+      ...(becomesIndexed ? { status: "INDEXED" as const } : {}),
     },
   });
+
+  if (becomesIndexed) {
+    const hookUser = await User.findById(indexedUrl.userId)
+      .select("webhookUrl webhookSecret")
+      .lean();
+    if (hookUser) {
+      await sendIndexWebhook(hookUser, {
+        event: "url.indexed",
+        url,
+        source: "gsc_inspection",
+        gscVerdict: inspect.data?.verdict,
+      });
+    }
+  }
 }
 
 async function processGscSitemapJob(job: InstanceType<typeof ProcessingJob>): Promise<void> {
@@ -369,11 +503,13 @@ async function processCrawlTrapJob(
   url: string
 ): Promise<void> {
   const seed = await SeedDomain.findOne({ isActive: true }).sort({ linkCount: 1 });
-  const item = generateCrawlTrapContent(url);
 
   if (!seed) {
     throw new Error("No active seed domain. Run npm run seed.");
   }
+
+  const related = await getRecentFeedUrls(seed._id.toString(), 8);
+  const item = generateCrawlTrapContent(url, related);
 
   await appendFeedItem(seed._id.toString(), item);
 
@@ -390,10 +526,19 @@ async function processCrawlTrapJob(
   await pingWebSub(feedUrl);
 
   if (job.indexedUrlId) {
+    const existing = await IndexedUrl.findById(job.indexedUrlId);
+    const prev = (existing?.responseMeta as Record<string, unknown>) ?? {};
     await IndexedUrl.findByIdAndUpdate(job.indexedUrlId, {
       status: "CRAWLED",
       processedAt: new Date(),
-      responseMeta: { crawlTrap: { feedUrl, seedName: seed.name } },
+      responseMeta: {
+        ...prev,
+        crawlTrap: {
+          feedUrl,
+          seedName: seed.name,
+          relatedFeedLinks: related.filter((u) => u !== url).length,
+        },
+      },
     });
   }
 }

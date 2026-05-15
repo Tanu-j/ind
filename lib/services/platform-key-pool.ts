@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { connectDB } from "@/lib/db/mongodb";
 import { decryptJson, encryptJson } from "@/lib/crypto/credentials";
 import { validateServiceAccountJson } from "@/lib/services/google-indexing";
@@ -81,6 +82,28 @@ async function pickPlatformKey(): Promise<InstanceType<typeof PlatformGcpKey> | 
   }
 
   const keys = await PlatformGcpKey.find({ isActive: true }).sort({ dailyUsage: 1 });
+  for (const key of keys) {
+    await resetPlatformUsageIfNeeded(key);
+    if (key.dailyUsage < DAILY_LIMIT) return key;
+  }
+  return null;
+}
+
+/** Next eligible platform key, excluding IDs already tried (for quota rotation). */
+export async function pickAlternativePlatformKey(
+  excludeIds: string[]
+): Promise<InstanceType<typeof PlatformGcpKey> | null> {
+  await syncPlatformKeysFromEnv();
+  const objectIds = excludeIds
+    .filter((id) => mongoose.Types.ObjectId.isValid(id))
+    .map((id) => new mongoose.Types.ObjectId(id));
+
+  const query =
+    objectIds.length > 0
+      ? { isActive: true, _id: { $nin: objectIds } }
+      : { isActive: true };
+
+  const keys = await PlatformGcpKey.find(query).sort({ dailyUsage: 1 });
   for (const key of keys) {
     await resetPlatformUsageIfNeeded(key);
     if (key.dailyUsage < DAILY_LIMIT) return key;

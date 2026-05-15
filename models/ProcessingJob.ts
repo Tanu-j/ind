@@ -11,6 +11,10 @@ export interface IProcessingJobPayload {
   sitemapUrl?: string;
   feedUrl?: string;
   seedDomainId?: string;
+  /** Staged GSC inspection round (for timeline UX). */
+  inspectRound?: number;
+  triedPlatformKeyIds?: string[];
+  userCredentialExhausted?: boolean;
 }
 
 export interface IProcessingJob extends Document {
@@ -20,6 +24,8 @@ export interface IProcessingJob extends Document {
   userId: mongoose.Types.ObjectId;
   type: JobType;
   payload: IProcessingJobPayload;
+  /** Copied from user — higher first in worker. */
+  processingPriority?: number;
   status: JobStatus;
   attempts: number;
   maxAttempts: number;
@@ -52,6 +58,7 @@ const ProcessingJobSchema = new Schema<IProcessingJob>(
       required: true,
     },
     payload: { type: Schema.Types.Mixed, default: {} },
+    processingPriority: { type: Number, default: 0, index: true },
     status: {
       type: String,
       enum: ["PENDING", "ACTIVE", "COMPLETED", "FAILED"],
@@ -69,6 +76,7 @@ const ProcessingJobSchema = new Schema<IProcessingJob>(
 );
 
 ProcessingJobSchema.index({ status: 1, scheduledAt: 1 });
+ProcessingJobSchema.index({ status: 1, processingPriority: -1, scheduledAt: 1 });
 
 export const ProcessingJob: Model<IProcessingJob> =
   mongoose.models.ProcessingJob ??

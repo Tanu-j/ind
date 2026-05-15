@@ -26,10 +26,17 @@ export async function POST(request: Request) {
 
     const isProd = process.env.NODE_ENV === "production";
     const demoAllowed = process.env.ALLOW_DEMO_CREDITS === "true";
+    const stripeOn = Boolean(process.env.STRIPE_SECRET_KEY?.trim());
 
     if (isProd && !demoAllowed) {
+      if (stripeOn) {
+        return jsonError(
+          "Card purchases use Stripe checkout. Click “Pay with card” on the credits page.",
+          400
+        );
+      }
       return jsonError(
-        "Online payments are not configured yet. Set ALLOW_DEMO_CREDITS=true for testing, or connect Stripe.",
+        "Online payments are not configured. Add STRIPE_SECRET_KEY + webhook, or set ALLOW_DEMO_CREDITS=true for testing.",
         503
       );
     }

@@ -8,6 +8,12 @@ describe("generateCrawlTrapContent", () => {
     expect(item.title).toContain("example.com");
     expect(item.description).toContain("https://example.com/page");
   });
+
+  it("includes related URLs in description", () => {
+    const item = generateCrawlTrapContent("https://example.com/a", ["https://example.com/b"]);
+    expect(item.description).toContain("example.com/b");
+    expect(item.description).toMatch(/related resources/i);
+  });
 });
 
 describe("buildRssFeed", () => {

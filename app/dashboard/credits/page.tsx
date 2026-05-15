@@ -12,6 +12,7 @@ export default function CreditsPage() {
   const [packages, setPackages] = useState<CreditPackage[]>([]);
   const [demoEnabled, setDemoEnabled] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
+  const [stripeOn, setStripeOn] = useState(false);
   const [loading, setLoading] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -21,16 +22,32 @@ export default function CreditsPage() {
       .get<{
         packages: CreditPackage[];
         demoPurchasesEnabled: boolean;
+        stripeCheckoutAvailable?: boolean;
       }>("/api/credits/packages")
       .then((data) => {
         setPackages(data.packages);
         setDemoEnabled(data.demoPurchasesEnabled);
+        setStripeOn(Boolean(data.stripeCheckoutAvailable));
       })
       .catch(() => setError("Failed to load packages."));
   }, []);
 
+  async function checkoutStripe(packageId: string) {
+    setLoading(`s:${packageId}`);
+    setError("");
+    setMessage("");
+    try {
+      const { url } = await api.post<{ url: string }>("/api/credits/checkout", { packageId });
+      window.location.href = url;
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Checkout failed.");
+    } finally {
+      setLoading(null);
+    }
+  }
+
   async function purchase(packageId: string) {
-    setLoading(packageId);
+    setLoading(`d:${packageId}`);
     setError("");
     setMessage("");
     try {
@@ -113,18 +130,37 @@ export default function CreditsPage() {
                   Live Google status
                 </li>
               </ul>
-              <Button
-                className="w-full"
-                disabled={!demoEnabled || loading === pkg.id}
-                onClick={() => purchase(pkg.id)}
-              >
-                <CreditCard className="mr-2 h-4 w-4" />
-                {loading === pkg.id
-                  ? "Processing…"
-                  : demoEnabled
-                    ? "Buy now"
-                    : "Payments coming soon"}
-              </Button>
+              <div className="flex flex-col gap-2">
+                {stripeOn && (
+                  <Button
+                    className="w-full"
+                    disabled={loading === `s:${pkg.id}` || loading === `d:${pkg.id}`}
+                    onClick={() => checkoutStripe(pkg.id)}
+                  >
+                    <CreditCard className="mr-2 h-4 w-4" />
+                    {loading === `s:${pkg.id}` ? "Redirecting…" : "Pay with card (Stripe)"}
+                  </Button>
+                )}
+                <Button
+                  className="w-full"
+                  variant={stripeOn ? "secondary" : "primary"}
+                  disabled={
+                    !demoEnabled ||
+                    loading === `d:${pkg.id}` ||
+                    loading === `s:${pkg.id}`
+                  }
+                  onClick={() => purchase(pkg.id)}
+                >
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  {loading === `d:${pkg.id}`
+                    ? "Processing…"
+                    : demoEnabled
+                      ? stripeOn
+                        ? "Add demo credits (no charge)"
+                        : "Buy now"
+                      : "Payments coming soon"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ))}
