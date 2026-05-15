@@ -1,44 +1,39 @@
 /**
- * Additional discovery signals used by commercial indexing tools
- * alongside the Google Indexing API.
+ * Cross-engine discovery signals (IndexNow covers Bing/Yandex; no deprecated Google ping).
  */
 
-export async function pingGoogleSitemap(sitemapUrl: string): Promise<{ ok: boolean }> {
+export async function pingBingIndexNowUrl(
+  pageUrl: string,
+  config?: { host: string; key: string } | null
+): Promise<{ ok: boolean }> {
+  if (!config?.host || !config?.key) return { ok: false };
   try {
-    const pingUrl = `https://www.google.com/ping?sitemap=${encodeURIComponent(sitemapUrl)}`;
-    const res = await fetch(pingUrl, {
-      method: "GET",
-      signal: AbortSignal.timeout(10000),
-    });
-    return { ok: res.ok || res.status === 204 };
-  } catch {
-    return { ok: false };
-  }
-}
-
-/** Notify Google that a specific page URL changed (via sitemap ping of page URL). */
-export async function pingGoogleForUrl(pageUrl: string): Promise<{ ok: boolean }> {
-  return pingGoogleSitemap(pageUrl);
-}
-
-export async function pingBingUrl(pageUrl: string): Promise<{ ok: boolean }> {
-  try {
+    const host = config.host.replace(/^https?:\/\//, "").replace(/\/$/, "");
     const res = await fetch("https://www.bing.com/indexnow", {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({
+        host,
+        key: config.key,
+        keyLocation: `https://${host}/${config.key}.txt`,
+        urlList: [pageUrl],
+      }),
       signal: AbortSignal.timeout(10000),
     });
-    void pageUrl;
-    return { ok: res.ok };
+    return { ok: res.ok || res.status === 202 };
   } catch {
     return { ok: false };
   }
 }
 
-export async function submitDiscoverySignals(url: string): Promise<Record<string, unknown>> {
-  const [google, bing] = await Promise.all([
-    pingGoogleForUrl(url),
-    pingBingUrl(url),
-  ]);
-  return { googlePing: google, bingPing: bing, at: new Date().toISOString() };
+export async function submitDiscoverySignals(
+  url: string,
+  indexNowConfig?: { host: string; key: string } | null
+): Promise<Record<string, unknown>> {
+  const bing = await pingBingIndexNowUrl(url, indexNowConfig);
+  return {
+    bingDirect: bing,
+    note: "Google sitemap ping deprecated; use GSC sitemap submit job instead.",
+    at: new Date().toISOString(),
+  };
 }

@@ -6,3 +6,6 @@ export { GcpCredential, type IGcpCredential } from "./GcpCredential";
 export { SeedDomain, type ISeedDomain } from "./SeedDomain";
 export { FeedItem, type IFeedItem } from "./FeedItem";
 export { CreditTransaction, type ICreditTransaction } from "./CreditTransaction";
+export { PlatformGcpKey, type IPlatformGcpKey } from "./PlatformGcpKey";
+export { UserIndexNow, type IUserIndexNow } from "./UserIndexNow";
+export { BatchSitemap, type IBatchSitemap } from "./BatchSitemap";

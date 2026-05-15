@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import { Zap, Globe, Layers, Rocket } from "lucide-react";
+import { Zap, Globe, Layers, Rocket, Flame } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, ApiError } from "@/lib/api/client";
@@ -17,6 +17,8 @@ interface SubmitResult {
   indexNowCount: number;
   mode: IndexingMode;
   hasGoogleCredential: boolean;
+  preflightFailed?: number;
+  creditsUsed?: number;
 }
 
 interface AppConfig {
@@ -24,6 +26,7 @@ interface AppConfig {
   defaultMode: IndexingMode;
   platformGoogleEnabled: boolean;
   maxUrlsPerBatch: number;
+  turboCreditMultiplier?: number;
 }
 
 const MODE_INFO: Record<
@@ -44,6 +47,11 @@ const MODE_INFO: Record<
     label: "Maximum",
     desc: "Google API + crawl trap + IndexNow — all signals",
     icon: Rocket,
+  },
+  turbo: {
+    label: "Turbo",
+    desc: "Everything: Google API, GSC sitemap, batch IndexNow, crawl trap, WebSub (2 credits/URL)",
+    icon: Flame,
   },
 };
 
@@ -95,9 +103,9 @@ export default function SubmitPage() {
         )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        {(config?.indexingModes ?? ["google_instant", "hybrid", "maximum"]).map((m) => {
-          const info = MODE_INFO[m];
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {(config?.indexingModes ?? ["google_instant", "hybrid", "maximum", "turbo"]).map((m) => {
+          const info = MODE_INFO[m] ?? MODE_INFO.google_instant;
           const Icon = info.icon;
           return (
             <button
@@ -145,7 +153,10 @@ export default function SubmitPage() {
             />
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-zinc-500">
-                {lineCount} URL(s) · {lineCount} credit(s)
+                {lineCount} URL(s) ·{" "}
+                {lineCount *
+                  (mode === "turbo" ? (config?.turboCreditMultiplier ?? 2) : 1)}{" "}
+                credit(s)
                 {config ? ` · max ${config.maxUrlsPerBatch}` : ""}
               </p>
               <div className="flex gap-2">
@@ -172,8 +183,15 @@ export default function SubmitPage() {
             </p>
             <ul className="mt-3 space-y-1 text-sm text-zinc-300">
               <li>Batch: {result.batchId}</li>
+              <li>Mode: {result.mode}</li>
               <li>Google API: {result.apiCount} URLs</li>
-              <li>IndexNow: {result.indexNowCount} signals</li>
+              <li>IndexNow batch: {result.indexNowCount} URLs</li>
+              {result.preflightFailed ? (
+                <li className="text-amber-400">
+                  Skipped {result.preflightFailed} URL(s) (failed preflight)
+                </li>
+              ) : null}
+              {result.creditsUsed ? <li>Credits used: {result.creditsUsed}</li> : null}
             </ul>
             <Link
               href={`/dashboard/batches/${result.batchId}`}

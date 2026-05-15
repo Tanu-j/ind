@@ -129,6 +129,8 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      <IndexNowSettings />
+
       {credentials.length > 0 && (
         <Card>
           <CardHeader>
@@ -177,5 +179,89 @@ export default function SettingsPage() {
         </Card>
       )}
     </div>
+  );
+}
+
+function IndexNowSettings() {
+  const [host, setHost] = useState("");
+  const [key, setKey] = useState("");
+  const [keyFileUrl, setKeyFileUrl] = useState("");
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    api
+      .get<{ configured: boolean; host?: string; key?: string; keyFileUrl?: string }>(
+        "/api/settings/indexnow"
+      )
+      .then((d) => {
+        if (d.configured && d.host && d.key) {
+          setHost(d.host);
+          setKey(d.key);
+          setKeyFileUrl(d.keyFileUrl ?? "");
+        }
+      })
+      .catch(() => null);
+  }, []);
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    setErr("");
+    setMsg("");
+    try {
+      const res = await api.post<{ keyFileUrl: string }>("/api/settings/indexnow", {
+        host,
+        key,
+      });
+      setKeyFileUrl(res.keyFileUrl);
+      setMsg("IndexNow saved. Host the key file on your domain before submitting.");
+    } catch (error) {
+      setErr(error instanceof ApiError ? error.message : "Save failed.");
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>IndexNow (your domain)</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="mb-4 text-sm text-zinc-400">
+          Bing, Yandex, and other engines use IndexNow on your site. Host{" "}
+          <code className="text-violet-400">{`{key}.txt`}</code> on your domain root.
+        </p>
+        <form onSubmit={save} className="space-y-4">
+          {err && <p className="text-sm text-red-400">{err}</p>}
+          {msg && <p className="text-sm text-emerald-400">{msg}</p>}
+          <div>
+            <label className="mb-1 block text-sm text-zinc-400">Site host</label>
+            <Input
+              value={host}
+              onChange={(e) => setHost(e.target.value)}
+              placeholder="www.yoursite.com"
+              required
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-zinc-400">IndexNow key</label>
+            <Input
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              placeholder="your-indexnow-key"
+              required
+            />
+          </div>
+          {keyFileUrl && (
+            <p className="text-xs text-zinc-500">
+              Key file:{" "}
+              <a href={keyFileUrl} className="text-violet-400" target="_blank" rel="noreferrer">
+                {keyFileUrl}
+              </a>
+            </p>
+          )}
+          <Button type="submit">Save IndexNow</Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }

@@ -17,6 +17,8 @@ interface UrlRow {
     message?: string;
     googleNotifiedAt?: string;
     googleIndexedAt?: string;
+    preflight?: { warnings?: string[]; googleApiEligible?: boolean };
+    gscInspection?: { verdict?: string; coverageState?: string };
   };
 }
 
@@ -136,6 +138,20 @@ export default function BatchDetailPage() {
                     Google confirmed · {new Date(u.responseMeta.googleIndexedAt).toLocaleString()}
                   </p>
                 )}
+                {u.responseMeta?.gscInspection && (
+                  <p className="w-full text-xs text-zinc-500">
+                    GSC:{" "}
+                    {typeof u.responseMeta.gscInspection === "object"
+                      ? (u.responseMeta.gscInspection as { verdict?: string }).verdict ??
+                        JSON.stringify(u.responseMeta.gscInspection)
+                      : String(u.responseMeta.gscInspection)}
+                  </p>
+                )}
+                {u.responseMeta?.preflight?.warnings?.map((w) => (
+                  <p key={w} className="w-full text-xs text-amber-500/80">
+                    {w}
+                  </p>
+                ))}
                 {u.errorMessage && (
                   <p className="w-full text-xs text-red-400">{u.errorMessage}</p>
                 )}

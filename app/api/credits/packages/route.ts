@@ -1,11 +1,11 @@
 import { jsonOk } from "@/lib/api/response";
 import { CREDIT_PACKAGES } from "@/lib/constants/credits";
-import { isPlatformCredentialConfigured } from "@/lib/services/platform-credentials";
+import { isPlatformCredentialConfigured } from "@/lib/services/platform-key-pool";
 
 export async function GET() {
   return jsonOk({
     packages: CREDIT_PACKAGES,
-    platformGoogleEnabled: isPlatformCredentialConfigured(),
+    platformGoogleEnabled: await isPlatformCredentialConfigured(),
     demoPurchasesEnabled: process.env.ALLOW_DEMO_CREDITS === "true",
   });
 }

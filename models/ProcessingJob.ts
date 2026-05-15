@@ -1,18 +1,25 @@
 import mongoose, { Schema, type Document, type Model } from "mongoose";
 import type { JobStatus, JobType } from "@/lib/constants";
 
+export interface IProcessingJobPayload {
+  url?: string;
+  urls?: string[];
+  credentialId?: string;
+  credentialSource?: "user" | "platform";
+  propertyUrl?: string;
+  batchId?: string;
+  sitemapUrl?: string;
+  feedUrl?: string;
+  seedDomainId?: string;
+}
+
 export interface IProcessingJob extends Document {
   _id: mongoose.Types.ObjectId;
   batchId: mongoose.Types.ObjectId;
-  indexedUrlId: mongoose.Types.ObjectId;
+  indexedUrlId?: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   type: JobType;
-  payload: {
-    url: string;
-    credentialId?: string;
-    credentialSource?: "user" | "platform";
-    seedDomainId?: string;
-  };
+  payload: IProcessingJobPayload;
   status: JobStatus;
   attempts: number;
   maxAttempts: number;
@@ -27,19 +34,24 @@ export interface IProcessingJob extends Document {
 const ProcessingJobSchema = new Schema<IProcessingJob>(
   {
     batchId: { type: Schema.Types.ObjectId, ref: "IndexBatch", required: true, index: true },
-    indexedUrlId: { type: Schema.Types.ObjectId, ref: "IndexedUrl", required: true },
+    indexedUrlId: { type: Schema.Types.ObjectId, ref: "IndexedUrl" },
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     type: {
       type: String,
-      enum: ["API_INDEXING", "CRAWL_TRAP", "INDEX_NOW", "GOOGLE_VERIFY", "DISCOVERY_PING"],
+      enum: [
+        "API_INDEXING",
+        "CRAWL_TRAP",
+        "INDEX_NOW",
+        "BATCH_INDEXNOW",
+        "GOOGLE_VERIFY",
+        "GSC_INSPECT",
+        "GSC_SITEMAP",
+        "DISCOVERY_PING",
+        "WEBSUB_PING",
+      ],
       required: true,
     },
-    payload: {
-      url: { type: String, required: true },
-      credentialId: { type: String },
-      credentialSource: { type: String, enum: ["user", "platform"] },
-      seedDomainId: { type: String },
-    },
+    payload: { type: Schema.Types.Mixed, default: {} },
     status: {
       type: String,
       enum: ["PENDING", "ACTIVE", "COMPLETED", "FAILED"],

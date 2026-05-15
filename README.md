@@ -1,106 +1,67 @@
 # WhiteIndexWay
 
-Instant Google URL indexing platform — paste URLs, spend credits, get live Google Indexing API status.
+Instant Google URL indexing platform — paste URLs, spend credits, track live Google + multi-engine status.
 
 ## Features
 
-- **Google Instant mode (default)** — 100% Google Indexing API + IndexNow + discovery pings per URL
-- **Credit packages** — buy credits in-dashboard (`ALLOW_DEMO_CREDITS=true` for testing)
-- **Platform GCP key** — optional `PLATFORM_GCP_SERVICE_ACCOUNT_JSON` so users only paste URLs (like commercial indexers)
-- **Live status** — SUBMITTED → INDEXED with Google metadata verification
-- **Hybrid / Maximum modes** — crawl-trap RSS + multi-signal indexing
-- **MongoDB job queue** — parallel processing, auto-runs after submit
+- **Google Instant** (default) — Indexing API + batch IndexNow + GSC sitemap + metadata verify
+- **Turbo** — all signals (2 credits/URL): API, crawl trap, IndexNow, GSC inspect, WebSub
+- **Hybrid / Maximum** — quota-friendly or full multi-signal modes
+- **Preflight checks** — HTTP 200, noindex, robots.txt, JobPosting schema hints
+- **Multi GCP key pool** — rotate platform keys for 200+ URLs/day per key
+- **Per-user IndexNow** — Bing/Yandex on the user's own domain
+- **Credit packages** — in-app purchase (demo mode via `ALLOW_DEMO_CREDITS`)
+- **Live dashboard** — SUBMITTED → INDEXED + GSC inspection data
 
 ## Quick start
 
-### 1. Environment
-
 ```bash
 cp .env.example .env.local
-```
-
-Edit `.env.local`:
-
-- `MONGODB_URI` — MongoDB connection string
-- `AUTH_SECRET` — at least 32 random characters
-- `APP_URL` — public URL of this app (e.g. `http://localhost:3000`) for crawl-trap RSS feed
-- `WORKER_SECRET` — required in production for `POST /api/worker/process`
-
-### 2. Install & run
-
-```bash
 npm install
-npm run seed    # creates seed domain pointing at APP_URL/feeds/live-index.xml
-npm run dev     # http://localhost:3000
-npm test        # unit tests
+npm run seed
+npm run seed:keys   # import PLATFORM_GCP_* keys into DB
+npm run dev
 ```
 
-**Development:** URL batches process automatically when you submit (no separate worker needed).
+### Required env
 
-**Optional** — continuous queue polling (retries, large backlogs):
+| Variable | Purpose |
+|----------|---------|
+| `MONGODB_URI` | Database |
+| `AUTH_SECRET` | Sessions (32+ chars) |
+| `APP_URL` | Public URL for RSS + batch sitemaps |
+| `PLATFORM_GCP_SERVICE_ACCOUNT_JSON` or `PLATFORM_GCP_KEYS_JSON` | Platform Google API keys |
+| `ALLOW_DEMO_CREDITS=true` | Enable test credit purchases |
 
-```bash
-npm run worker       # standalone worker
-npm run dev:all      # dev server + worker together
-```
+Add each platform service account as **Owner** in Google Search Console for target sites.
 
-If the dev server acts oddly (missing API routes), run `npm run dev:clean` to reset the Turbopack cache.
+## Indexing modes
 
-### 3. Google Indexing API (optional)
+| Mode | What runs |
+|------|-----------|
+| **google_instant** | Google API + batch IndexNow + GSC sitemap + verify |
+| **turbo** | Everything above + crawl trap + WebSub + GSC inspect (2 credits/URL) |
+| **hybrid** | ~30% Google API, ~70% crawl trap (configurable) |
+| **maximum** | Google API + crawl trap + IndexNow on all URLs |
 
-1. Create a GCP project and enable **Indexing API**
-2. Create a service account and download JSON key
-3. Add the service account as **Owner** in Google Search Console for your site
-4. In the app: **Dashboard → Settings** → paste JSON and property URL
+## New API routes
 
-Use only for pages with `JobPosting` or `BroadcastEvent` schema per [Google's guidelines](https://developers.google.com/search/apis/indexing-api/v3/using-api).
-
-## Project structure
-
-```
-app/
-  api/          # REST API (auth, submit, batches, credentials, worker)
-  dashboard/    # Protected UI
-  (auth)/       # Login & register
-components/     # UI + layout
-lib/
-  services/     # Indexing API, IndexNow, crawl trap, batch processor
-  auth/         # Session JWT
-models/         # Mongoose schemas
-workers/        # Background queue processor
-scripts/        # DB seed
-```
-
-## API overview
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/auth/register` | POST | Create account |
-| `/api/auth/login` | POST | Sign in |
-| `/api/index/submit` | POST | Submit URL batch |
-| `/api/batches` | GET | List batches |
-| `/api/batches/[id]` | GET | Batch detail + URLs |
-| `/api/credentials` | GET/POST | GCP credentials |
-| `/api/worker/process` | POST | Cron trigger (set `WORKER_SECRET`) |
-
-## Production notes
-
-- Run `npm run worker` as a separate process (PM2, systemd, or container)
-- Set `WORKER_SECRET` and call `POST /api/worker/process` from cron if you prefer HTTP triggers
-- Set `APP_URL` to your production domain so crawl-trap RSS and feed pings use the correct URL
-- Configure `INDEXNOW_HOST` and `INDEXNOW_KEY` for cross-engine pings (serves `/{key}.txt` automatically)
-- Set `CREDENTIAL_ENCRYPTION_KEY` (32+ chars) separate from `AUTH_SECRET` in production
-- Add real seed domains via MongoDB `SeedDomain` collection or extend `scripts/seed.ts`
-- Crawl-trap RSS feed: `GET /feeds/live-index.xml`
+| Route | Description |
+|-------|-------------|
+| `GET/POST /api/settings/indexnow` | Per-user IndexNow host + key |
+| `GET /feeds/batch/{id}` | Dynamic XML sitemap per batch (for GSC) |
+| `GET /feeds/live-index.xml` | Crawl-trap RSS feed |
 
 ## Scripts
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Development server (auto-processes jobs on submit) |
-| `npm run dev:clean` | Clear `.next` cache and start dev |
-| `npm run dev:all` | Dev server + background worker |
-| `npm run build` | Production build |
-| `npm run worker` | Process job queue (required in production) |
-| `npm run seed` | Seed default crawl-trap domain |
-| `npm test` | Run unit tests |
+| `npm run dev` | Dev server (auto-processes queue on submit) |
+| `npm run worker` | Background job processor |
+| `npm run seed` | Seed crawl-trap domain |
+| `npm run seed:keys` | Import platform GCP keys from env |
+| `npm test` | Unit tests |
+
+## Honest note
+
+We deliver official Google Indexing API notifications and multi-engine signals as fast as the APIs allow. **Google decides** final indexing in search results; JobPosting/BroadcastEvent pages see the fastest results.

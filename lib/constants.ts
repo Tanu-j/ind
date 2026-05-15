@@ -18,15 +18,22 @@ export const JOB_TYPES = [
   "API_INDEXING",
   "CRAWL_TRAP",
   "INDEX_NOW",
+  "BATCH_INDEXNOW",
   "GOOGLE_VERIFY",
+  "GSC_INSPECT",
+  "GSC_SITEMAP",
   "DISCOVERY_PING",
+  "WEBSUB_PING",
 ] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 
-export const INDEXING_MODES = ["google_instant", "hybrid", "maximum"] as const;
+export const INDEXING_MODES = ["google_instant", "hybrid", "maximum", "turbo"] as const;
 export type IndexingMode = (typeof INDEXING_MODES)[number];
 
 export const DEFAULT_INDEXING_MODE: IndexingMode = "google_instant";
+
+/** Turbo mode uses 2 credits per URL (all signals). */
+export const TURBO_CREDIT_MULTIPLIER = 2;
 
 export const JOB_STATUSES = ["PENDING", "ACTIVE", "COMPLETED", "FAILED"] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];

@@ -1,6 +1,11 @@
 import { jsonOk } from "@/lib/api/response";
-import { DEFAULT_API_SPLIT, INDEXING_MODES, DEFAULT_INDEXING_MODE } from "@/lib/constants";
-import { isPlatformCredentialConfigured } from "@/lib/services/platform-credentials";
+import {
+  DEFAULT_API_SPLIT,
+  INDEXING_MODES,
+  DEFAULT_INDEXING_MODE,
+  TURBO_CREDIT_MULTIPLIER,
+} from "@/lib/constants";
+import { isPlatformCredentialConfigured } from "@/lib/services/platform-key-pool";
 
 /** Public-safe runtime configuration for the dashboard UI. */
 export async function GET() {
@@ -15,7 +20,8 @@ export async function GET() {
     maxUrlsPerBatch: 5000,
     indexingModes: INDEXING_MODES,
     defaultMode: DEFAULT_INDEXING_MODE,
-    platformGoogleEnabled: isPlatformCredentialConfigured(),
+    platformGoogleEnabled: await isPlatformCredentialConfigured(),
     demoPurchasesEnabled: process.env.ALLOW_DEMO_CREDITS === "true",
+    turboCreditMultiplier: TURBO_CREDIT_MULTIPLIER,
   });
 }

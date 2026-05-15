@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "worker": "tsx workers/process-queue.ts",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "seed:keys": "tsx scripts/seed-platform-keys.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
