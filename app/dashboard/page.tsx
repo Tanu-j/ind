@@ -8,9 +8,15 @@ import { Badge, statusVariant } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import mongoose from "mongoose";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ error?: string }>;
+}) {
   const user = await getCurrentUser();
   if (!user) return null;
+
+  const sp = searchParams ? await searchParams : {};
 
   await connectDB();
   const userId = new mongoose.Types.ObjectId(user.id);
@@ -35,6 +41,13 @@ export default async function DashboardPage() {
         <p className="mt-1 text-zinc-400">
           Instant Google Indexing API — paste URLs, track live status
         </p>
+        {sp.error === "admin_required" && (
+          <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+            Admin only: add your email to <code className="text-amber-100">ADMIN_EMAILS</code> in
+            <code className="mx-1 text-amber-100">.env</code>, restart the dev server, then open{" "}
+            <strong>GCP key pool</strong> in the sidebar.
+          </p>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">

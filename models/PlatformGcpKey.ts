@@ -15,7 +15,7 @@ export interface IPlatformGcpKey extends Document {
 const PlatformGcpKeySchema = new Schema<IPlatformGcpKey>(
   {
     label: { type: String, required: true },
-    clientEmail: { type: String, required: true },
+    clientEmail: { type: String, required: true, unique: true },
     encryptedJson: { type: String, required: true },
     isActive: { type: Boolean, default: true },
     dailyUsage: { type: Number, default: 0 },

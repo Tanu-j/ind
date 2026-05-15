@@ -5,7 +5,9 @@ import { PlatformGcpKey, GcpCredential } from "@/models";
 import type { IGcpCredential } from "@/models/GcpCredential";
 import type { IPlatformGcpKey } from "@/models/PlatformGcpKey";
 
-const DAILY_LIMIT = 200;
+import { PLATFORM_KEY_DAILY_LIMIT } from "@/lib/services/platform-keys-admin";
+
+const DAILY_LIMIT = PLATFORM_KEY_DAILY_LIMIT;
 
 export type ResolvedCredential = {
   id: string;

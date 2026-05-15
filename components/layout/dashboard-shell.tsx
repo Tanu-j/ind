@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Link2,
@@ -11,6 +11,7 @@ import {
   Zap,
   CreditCard,
   Coins,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api/client";
@@ -23,20 +24,33 @@ const nav = [
   { href: "/dashboard/settings", label: "Settings", icon: Settings, short: "Settings" },
 ];
 
+const adminNav = {
+  href: "/dashboard/platform-keys",
+  label: "GCP key pool",
+  icon: Shield,
+  short: "Keys",
+};
+
 export function DashboardShell({
   children,
   user,
+  isAdmin = false,
 }: {
   children: React.ReactNode;
   user: { name: string; email: string; credits: number };
+  isAdmin?: boolean;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
+  const navItems = isAdmin ? [...nav, adminNav] : nav;
 
   async function handleLogout() {
-    await api.post("/api/auth/logout");
-    router.push("/login");
-    router.refresh();
+    try {
+      await api.post("/api/auth/logout");
+    } catch {
+      /* still navigate; stale session will fail on next protected request */
+    }
+    // Full navigation so the browser applies Set-Cookie and RSC cache cannot keep the old session layout.
+    window.location.assign("/login");
   }
 
   return (
@@ -49,7 +63,7 @@ export function DashboardShell({
           <span className="font-semibold">WhiteIndexWay</span>
         </div>
         <nav className="flex-1 space-y-1 p-3">
-          {nav.map((item) => {
+          {navItems.map((item) => {
             const active =
               pathname === item.href ||
               (item.href !== "/dashboard" && pathname.startsWith(item.href));
@@ -61,7 +75,9 @@ export function DashboardShell({
                   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                   active
                     ? "bg-violet-600/20 text-violet-300"
-                    : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                    : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100",
+                  item.href === "/dashboard/platform-keys" &&
+                    "border border-amber-500/20"
                 )}
               >
                 <item.icon className="h-4 w-4" />
@@ -99,13 +115,24 @@ export function DashboardShell({
           <p className="hidden text-sm text-zinc-400 lg:block">
             Welcome, <span className="text-zinc-100">{user.name}</span>
           </p>
-          <p className="text-sm text-violet-400">{user.credits} credits</p>
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-violet-400">{user.credits} credits</p>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 lg:hidden"
+              aria-label="Sign out"
+            >
+              <LogOut className="h-4 w-4 shrink-0" />
+              <span className="whitespace-nowrap">Sign out</span>
+            </button>
+          </div>
         </header>
         <div className="p-4 lg:p-8">{children}</div>
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-50 flex border-t border-zinc-800 bg-zinc-950/95 backdrop-blur lg:hidden">
-        {nav.map((item) => {
+        {navItems.map((item) => {
           const active =
             pathname === item.href ||
             (item.href !== "/dashboard" && pathname.startsWith(item.href));

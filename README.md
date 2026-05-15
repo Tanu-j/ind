@@ -52,6 +52,12 @@ Add each platform service account as **Owner** in Google Search Console for targ
 | `GET /feeds/batch/{id}` | Dynamic XML sitemap per batch (for GSC) |
 | `GET /feeds/live-index.xml` | Crawl-trap RSS feed |
 
+## Admin: GCP key pool
+
+1. Set `ADMIN_EMAILS=your@email.com` in `.env.local` (comma-separated for multiple admins).
+2. Sign in with that account → sidebar **GCP key pool** (or open `/dashboard/platform-keys`).
+3. Add service accounts (encrypted in MongoDB). Workers auto-rotate to the least-used key under 200/day each.
+
 ## Scripts
 
 | Command | Description |

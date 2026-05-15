@@ -65,13 +65,14 @@ export async function setSessionCookie(
 }
 
 export function clearSessionCookie(response: NextResponse): void {
-  response.cookies.set(COOKIE_NAME, "", {
+  const opts = {
+    path: "/",
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 0,
-    path: "/",
-  });
+    sameSite: "lax" as const,
+  };
+  // Use delete() so Expires is set in the past; maxAge: 0 alone is easy to mishandle in serializers.
+  response.cookies.delete({ name: COOKIE_NAME, ...opts });
 }
 
 export async function getSessionFromRequest(
