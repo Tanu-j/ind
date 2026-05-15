@@ -6,23 +6,27 @@ export interface IndexingApiResult {
   error?: string;
 }
 
+function createIndexingClient(serviceAccountJson: string) {
+  const credentials = JSON.parse(serviceAccountJson) as {
+    client_email: string;
+    private_key: string;
+  };
+
+  const auth = new google.auth.GoogleAuth({
+    credentials,
+    scopes: ["https://www.googleapis.com/auth/indexing"],
+  });
+
+  return google.indexing({ version: "v3", auth });
+}
+
 export async function publishUrlUpdate(
   serviceAccountJson: string,
   url: string,
   type: "URL_UPDATED" | "URL_DELETED" = "URL_UPDATED"
 ): Promise<IndexingApiResult> {
   try {
-    const credentials = JSON.parse(serviceAccountJson) as {
-      client_email: string;
-      private_key: string;
-    };
-
-    const auth = new google.auth.GoogleAuth({
-      credentials,
-      scopes: ["https://www.googleapis.com/auth/indexing"],
-    });
-
-    const indexing = google.indexing({ version: "v3", auth });
+    const indexing = createIndexingClient(serviceAccountJson);
     const response = await indexing.urlNotifications.publish({
       requestBody: { url, type },
     });
@@ -30,6 +34,21 @@ export async function publishUrlUpdate(
     return { success: true, data: response.data };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Indexing API request failed.";
+    return { success: false, error: message };
+  }
+}
+
+/** Check if Google received our Indexing API notification for this URL. */
+export async function getUrlIndexingMetadata(
+  serviceAccountJson: string,
+  url: string
+): Promise<IndexingApiResult> {
+  try {
+    const indexing = createIndexingClient(serviceAccountJson);
+    const response = await indexing.urlNotifications.getMetadata({ url });
+    return { success: true, data: response.data };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Metadata check failed.";
     return { success: false, error: message };
   }
 }

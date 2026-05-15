@@ -10,6 +10,7 @@ export interface IProcessingJob extends Document {
   payload: {
     url: string;
     credentialId?: string;
+    credentialSource?: "user" | "platform";
     seedDomainId?: string;
   };
   status: JobStatus;
@@ -30,12 +31,13 @@ const ProcessingJobSchema = new Schema<IProcessingJob>(
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     type: {
       type: String,
-      enum: ["API_INDEXING", "CRAWL_TRAP", "INDEX_NOW"],
+      enum: ["API_INDEXING", "CRAWL_TRAP", "INDEX_NOW", "GOOGLE_VERIFY", "DISCOVERY_PING"],
       required: true,
     },
     payload: {
       url: { type: String, required: true },
       credentialId: { type: String },
+      credentialSource: { type: String, enum: ["user", "platform"] },
       seedDomainId: { type: String },
     },
     status: {

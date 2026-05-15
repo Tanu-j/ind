@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { connectDB } from "@/lib/db/mongodb";
 import { jsonError, jsonOk, jsonUnauthorized } from "@/lib/api/response";
 import { getSession } from "@/lib/auth/session";
+import { isValidObjectId } from "@/lib/validation/object-id";
 import { IndexBatch, IndexedUrl } from "@/models";
 
 export async function GET(
@@ -13,6 +14,8 @@ export async function GET(
     if (!session) return jsonUnauthorized();
 
     const { id } = await params;
+    if (!isValidObjectId(id)) return jsonError("Batch not found.", 404);
+
     await connectDB();
 
     const batch = await IndexBatch.findOne({
@@ -51,6 +54,7 @@ export async function GET(
         routeUsed: u.routeUsed,
         status: u.status,
         errorMessage: u.errorMessage,
+        responseMeta: u.responseMeta,
         processedAt: u.processedAt,
         createdAt: u.createdAt,
       })),

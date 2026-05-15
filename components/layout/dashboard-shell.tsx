@@ -10,15 +10,17 @@ import {
   LogOut,
   Zap,
   CreditCard,
+  Coins,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api/client";
 
 const nav = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { href: "/dashboard/submit", label: "Submit URLs", icon: Link2 },
-  { href: "/dashboard/batches", label: "Batches", icon: History },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
+  { href: "/dashboard", label: "Overview", icon: LayoutDashboard, short: "Home" },
+  { href: "/dashboard/submit", label: "Index URLs", icon: Link2, short: "Index" },
+  { href: "/dashboard/batches", label: "Batches", icon: History, short: "Batches" },
+  { href: "/dashboard/credits", label: "Buy credits", icon: Coins, short: "Credits" },
+  { href: "/dashboard/settings", label: "Settings", icon: Settings, short: "Settings" },
 ];
 
 export function DashboardShell({
@@ -38,7 +40,7 @@ export function DashboardShell({
   }
 
   return (
-    <div className="flex min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="flex min-h-screen bg-zinc-950 text-zinc-100 pb-16 lg:pb-0">
       <aside className="hidden w-64 flex-col border-r border-zinc-800 bg-zinc-900/30 lg:flex">
         <div className="flex h-16 items-center gap-2 border-b border-zinc-800 px-5">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600">
@@ -48,7 +50,9 @@ export function DashboardShell({
         </div>
         <nav className="flex-1 space-y-1 p-3">
           {nav.map((item) => {
-            const active = pathname === item.href;
+            const active =
+              pathname === item.href ||
+              (item.href !== "/dashboard" && pathname.startsWith(item.href));
             return (
               <Link
                 key={item.href}
@@ -83,15 +87,43 @@ export function DashboardShell({
           </button>
         </div>
       </aside>
+
       <main className="flex-1 overflow-auto">
         <header className="flex h-16 items-center justify-between border-b border-zinc-800 px-4 lg:px-8">
-          <p className="text-sm text-zinc-400">
+          <div className="flex items-center gap-2 lg:hidden">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600">
+              <Zap className="h-4 w-4" />
+            </span>
+            <span className="font-semibold">WhiteIndexWay</span>
+          </div>
+          <p className="hidden text-sm text-zinc-400 lg:block">
             Welcome, <span className="text-zinc-100">{user.name}</span>
           </p>
-          <p className="text-sm text-violet-400 lg:hidden">{user.credits} credits</p>
+          <p className="text-sm text-violet-400">{user.credits} credits</p>
         </header>
         <div className="p-4 lg:p-8">{children}</div>
       </main>
+
+      <nav className="fixed bottom-0 left-0 right-0 z-50 flex border-t border-zinc-800 bg-zinc-950/95 backdrop-blur lg:hidden">
+        {nav.map((item) => {
+          const active =
+            pathname === item.href ||
+            (item.href !== "/dashboard" && pathname.startsWith(item.href));
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "flex flex-1 flex-col items-center gap-1 py-2 text-xs transition-colors",
+                active ? "text-violet-400" : "text-zinc-500"
+              )}
+            >
+              <item.icon className="h-5 w-5" />
+              {item.short}
+            </Link>
+          );
+        })}
+      </nav>
     </div>
   );
 }

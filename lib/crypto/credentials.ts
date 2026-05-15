@@ -3,7 +3,15 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "crypt
 const ALGORITHM = "aes-256-gcm";
 
 function getKey(): Buffer {
-  const secret = process.env.CREDENTIAL_ENCRYPTION_KEY ?? process.env.AUTH_SECRET;
+  const dedicated = process.env.CREDENTIAL_ENCRYPTION_KEY;
+  const secret = dedicated ?? process.env.AUTH_SECRET;
+
+  if (process.env.NODE_ENV === "production" && !dedicated) {
+    console.warn(
+      "[crypto] CREDENTIAL_ENCRYPTION_KEY is unset in production; falling back to AUTH_SECRET."
+    );
+  }
+
   if (!secret || secret.length < 32) {
     throw new Error("CREDENTIAL_ENCRYPTION_KEY or AUTH_SECRET (32+ chars) required.");
   }

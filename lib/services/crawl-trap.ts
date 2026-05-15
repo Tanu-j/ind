@@ -69,10 +69,7 @@ export async function publishToSeedDomain(
   item: CrawlTrapItem
 ): Promise<{ success: boolean; error?: string }> {
   if (!seed.apiEndpoint) {
-    return {
-      success: true,
-      error: undefined,
-    };
+    return { success: true };
   }
 
   try {
@@ -114,13 +111,14 @@ export async function pingFeedDiscovery(feedUrl: string): Promise<void> {
     "https://ping.feedburner.com/ping",
   ];
 
-  const siteName = "WhiteIndexWay Feed";
+  const siteName = escapeXml("WhiteIndexWay Feed");
+  const safeFeedUrl = escapeXml(feedUrl);
   const body = `<?xml version="1.0"?>
 <methodCall>
   <methodName>weblogUpdates.ping</methodName>
   <params>
     <param><value><string>${siteName}</string></value></param>
-    <param><value><string>${feedUrl}</string></value></param>
+    <param><value><string>${safeFeedUrl}</string></value></param>
   </params>
 </methodCall>`;
 

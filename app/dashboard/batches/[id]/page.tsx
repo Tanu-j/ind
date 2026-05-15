@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { api } from "@/lib/api/client";
+import { api, ApiError } from "@/lib/api/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, statusVariant } from "@/components/ui/badge";
 
@@ -13,28 +13,62 @@ interface UrlRow {
   routeUsed: string;
   status: string;
   errorMessage?: string;
+  responseMeta?: {
+    message?: string;
+    googleNotifiedAt?: string;
+    googleIndexedAt?: string;
+  };
+}
+
+interface BatchInfo {
+  id: string;
+  totalUrls: number;
+  apiCount: number;
+  crawlTrapCount: number;
+  indexNowCount: number;
+  status: string;
+  completedCount: number;
+  failedCount: number;
 }
 
 export default function BatchDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const [urls, setUrls] = useState<UrlRow[]>([]);
-  const [batch, setBatch] = useState<Record<string, unknown> | null>(null);
+  const [batch, setBatch] = useState<BatchInfo | null>(null);
+  const [statusBreakdown, setStatusBreakdown] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  useEffect(() => {
+  const loadBatch = useCallback(async () => {
     if (!id) return;
-    api
-      .get<{ batch: Record<string, unknown>; urls: UrlRow[] }>(`/api/batches/${id}`)
-      .then((d) => {
-        setBatch(d.batch);
-        setUrls(d.urls);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    try {
+      const d = await api.get<{
+        batch: BatchInfo;
+        urls: UrlRow[];
+        statusBreakdown: Record<string, number>;
+      }>(`/api/batches/${id}`);
+      setBatch(d.batch);
+      setUrls(d.urls);
+      setStatusBreakdown(d.statusBreakdown);
+      setError("");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to load batch.");
+    }
   }, [id]);
 
+  useEffect(() => {
+    loadBatch().finally(() => setLoading(false));
+  }, [loadBatch]);
+
+  useEffect(() => {
+    if (!batch || batch.status !== "PROCESSING") return;
+    const interval = setInterval(loadBatch, 2000);
+    return () => clearInterval(interval);
+  }, [batch?.status, loadBatch]);
+
   if (loading) return <p className="text-zinc-500">Loading batch…</p>;
+  if (error) return <p className="text-red-400">{error}</p>;
   if (!batch) return <p className="text-red-400">Batch not found.</p>;
 
   return (
@@ -43,11 +77,40 @@ export default function BatchDetailPage() {
         ← Back to batches
       </Link>
       <h1 className="text-2xl font-bold text-white">
-        Batch · {String(batch.totalUrls)} URLs
+        Batch · {batch.totalUrls} URLs
       </h1>
-      <p className="text-zinc-400">
-        Status: <Badge variant={statusVariant(String(batch.status))}>{String(batch.status)}</Badge>
-      </p>
+      <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-400">
+        <span>
+          Status:{" "}
+          <Badge variant={statusVariant(batch.status)}>{batch.status}</Badge>
+        </span>
+        <span>API: {batch.apiCount}</span>
+        <span>Crawl trap: {batch.crawlTrapCount}</span>
+        <span>IndexNow: {batch.indexNowCount}</span>
+        <span>Done: {batch.completedCount}</span>
+        <span>Failed: {batch.failedCount}</span>
+      </div>
+
+      {Object.keys(statusBreakdown).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Status breakdown</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(statusBreakdown).map(([status, count]) => (
+                <span
+                  key={status}
+                  className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-1 text-sm"
+                >
+                  <Badge variant={statusVariant(status)}>{status}</Badge>
+                  <span className="ml-2 text-zinc-400">{count}</span>
+                </span>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -65,12 +128,25 @@ export default function BatchDetailPage() {
                   <span className="text-xs text-zinc-500">{u.routeUsed}</span>
                   <Badge variant={statusVariant(u.status)}>{u.status}</Badge>
                 </div>
+                {u.status === "SUBMITTED" && u.responseMeta?.message && (
+                  <p className="w-full text-xs text-emerald-400/80">{u.responseMeta.message}</p>
+                )}
+                {u.status === "INDEXED" && u.responseMeta?.googleIndexedAt && (
+                  <p className="w-full text-xs text-emerald-400">
+                    Google confirmed · {new Date(u.responseMeta.googleIndexedAt).toLocaleString()}
+                  </p>
+                )}
                 {u.errorMessage && (
                   <p className="w-full text-xs text-red-400">{u.errorMessage}</p>
                 )}
               </li>
             ))}
           </ul>
+          {batch.totalUrls > urls.length && (
+            <p className="mt-3 text-xs text-zinc-500">
+              Showing first {urls.length} of {batch.totalUrls} URLs.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

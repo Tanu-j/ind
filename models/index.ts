@@ -4,3 +4,5 @@ export { IndexedUrl, type IIndexedUrl } from "./IndexedUrl";
 export { ProcessingJob, type IProcessingJob } from "./ProcessingJob";
 export { GcpCredential, type IGcpCredential } from "./GcpCredential";
 export { SeedDomain, type ISeedDomain } from "./SeedDomain";
+export { FeedItem, type IFeedItem } from "./FeedItem";
+export { CreditTransaction, type ICreditTransaction } from "./CreditTransaction";

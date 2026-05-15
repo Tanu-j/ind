@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Link2, Layers } from "lucide-react";
+import { ArrowRight, Coins, Link2, Layers } from "lucide-react";
 import { connectDB } from "@/lib/db/mongodb";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import { IndexBatch, IndexedUrl, ProcessingJob } from "@/models";
@@ -25,6 +25,7 @@ export default async function DashboardPage() {
   ]);
 
   const submitted = urlStats.find((s) => s._id === "SUBMITTED")?.count ?? 0;
+  const indexed = urlStats.find((s) => s._id === "INDEXED")?.count ?? 0;
   const failed = urlStats.find((s) => s._id === "FAILED")?.count ?? 0;
 
   return (
@@ -32,11 +33,11 @@ export default async function DashboardPage() {
       <div>
         <h1 className="text-2xl font-bold text-white">Overview</h1>
         <p className="mt-1 text-zinc-400">
-          Hybrid indexing pipeline — API lane + crawl trap + IndexNow
+          Instant Google Indexing API — paste URLs, track live status
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-zinc-400">Credits</p>
@@ -51,8 +52,14 @@ export default async function DashboardPage() {
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-sm text-zinc-400">Submitted</p>
+            <p className="text-sm text-zinc-400">Google submitted</p>
             <p className="text-3xl font-bold text-emerald-400">{submitted}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-zinc-400">Google confirmed</p>
+            <p className="text-3xl font-bold text-violet-300">{indexed}</p>
           </CardContent>
         </Card>
         <Card>
@@ -63,17 +70,28 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         <Link
           href="/dashboard/submit"
           className="flex items-center gap-4 rounded-xl border border-violet-500/30 bg-violet-500/10 p-6 hover:bg-violet-500/15"
         >
           <Link2 className="h-8 w-8 text-violet-400" />
           <div>
-            <p className="font-semibold">Submit URLs</p>
-            <p className="text-sm text-zinc-400">Bulk hybrid indexing</p>
+            <p className="font-semibold">Index URLs now</p>
+            <p className="text-sm text-zinc-400">Paste & submit to Google</p>
           </div>
           <ArrowRight className="ml-auto h-5 w-5 text-violet-400" />
+        </Link>
+        <Link
+          href="/dashboard/credits"
+          className="flex items-center gap-4 rounded-xl border border-zinc-700 bg-zinc-900/50 p-6 hover:bg-zinc-800/50"
+        >
+          <Coins className="h-8 w-8 text-amber-400" />
+          <div>
+            <p className="font-semibold">Buy credits</p>
+            <p className="text-sm text-zinc-400">Scale your indexing</p>
+          </div>
+          <ArrowRight className="ml-auto h-5 w-5" />
         </Link>
         <Link
           href="/dashboard/settings"

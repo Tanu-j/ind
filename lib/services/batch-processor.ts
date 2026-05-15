@@ -1,13 +1,17 @@
 import mongoose from "mongoose";
 import { connectDB } from "@/lib/db/mongodb";
-import { DEFAULT_API_SPLIT } from "@/lib/constants";
+import {
+  DEFAULT_API_SPLIT,
+  DEFAULT_INDEXING_MODE,
+  type IndexingMode,
+} from "@/lib/constants";
 import { splitHybridUrls, parseUrlList } from "@/lib/utils";
+import { resolveGcpCredential } from "@/lib/services/platform-credentials";
 import {
   User,
   IndexBatch,
   IndexedUrl,
   ProcessingJob,
-  GcpCredential,
 } from "@/models";
 
 export interface SubmitBatchResult {
@@ -16,11 +20,51 @@ export interface SubmitBatchResult {
   apiCount: number;
   crawlTrapCount: number;
   indexNowCount: number;
+  mode: IndexingMode;
+  hasGoogleCredential: boolean;
+}
+
+type JobInsert = {
+  batchId: mongoose.Types.ObjectId;
+  indexedUrlId: mongoose.Types.ObjectId;
+  userId: mongoose.Types.ObjectId;
+  type:
+    | "API_INDEXING"
+    | "CRAWL_TRAP"
+    | "INDEX_NOW"
+    | "GOOGLE_VERIFY"
+    | "DISCOVERY_PING";
+  payload: {
+    url: string;
+    credentialId?: string;
+    credentialSource?: "user" | "platform";
+  };
+  scheduledAt?: Date;
+};
+
+function planUrlRoutes(
+  urls: string[],
+  mode: IndexingMode,
+  hasCredential: boolean
+): { api: string[]; crawlTrap: string[] } {
+  if (mode === "google_instant") {
+    return { api: urls, crawlTrap: [] };
+  }
+  if (mode === "maximum") {
+    return { api: urls, crawlTrap: urls };
+  }
+  const apiRatio = Number(process.env.HYBRID_API_RATIO ?? DEFAULT_API_SPLIT);
+  const split = splitHybridUrls(urls, hasCredential ? apiRatio : 0);
+  if (!hasCredential) {
+    return { api: [], crawlTrap: urls };
+  }
+  return split;
 }
 
 export async function createIndexingBatch(
   userId: string,
-  rawUrls: string
+  rawUrls: string,
+  mode: IndexingMode = DEFAULT_INDEXING_MODE
 ): Promise<SubmitBatchResult> {
   await connectDB();
 
@@ -35,13 +79,23 @@ export async function createIndexingBatch(
     throw new Error(`Insufficient credits. Need ${urls.length}, have ${user.credits}.`);
   }
 
-  const apiRatio = Number(process.env.HYBRID_API_RATIO ?? DEFAULT_API_SPLIT);
-  const { api: apiUrls, crawlTrap: crawlTrapUrls } = splitHybridUrls(urls, apiRatio);
+  const credential = await resolveGcpCredential(userId);
+  const hasGoogleCredential = Boolean(credential);
 
-  const activeCredential = await GcpCredential.findOne({
-    userId: user._id,
-    isActive: true,
-  }).sort({ dailyUsage: 1 });
+  if (
+    (mode === "google_instant" || mode === "maximum") &&
+    !hasGoogleCredential
+  ) {
+    throw new Error(
+      "Google Indexing API is not configured. Add your GCP key in Settings, or ask the admin to set PLATFORM_GCP_SERVICE_ACCOUNT_JSON."
+    );
+  }
+
+  const { api: apiUrls, crawlTrap: crawlTrapUrls } = planUrlRoutes(
+    urls,
+    mode,
+    hasGoogleCredential
+  );
 
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -50,6 +104,9 @@ export async function createIndexingBatch(
     user.credits -= urls.length;
     await user.save({ session });
 
+    const indexNowCount =
+      mode === "google_instant" || mode === "maximum" ? urls.length : crawlTrapUrls.length;
+
     const batch = await IndexBatch.create(
       [
         {
@@ -57,8 +114,9 @@ export async function createIndexingBatch(
           totalUrls: urls.length,
           apiCount: apiUrls.length,
           crawlTrapCount: crawlTrapUrls.length,
-          indexNowCount: crawlTrapUrls.length,
+          indexNowCount,
           status: "PROCESSING",
+          mode,
         },
       ],
       { session }
@@ -69,69 +127,91 @@ export async function createIndexingBatch(
       batchId: mongoose.Types.ObjectId;
       userId: mongoose.Types.ObjectId;
       url: string;
-      routeUsed: "API_INDEXING" | "CRAWL_TRAP" | "INDEX_NOW";
+      routeUsed: "API_INDEXING" | "CRAWL_TRAP";
     }> = [];
 
-    for (const url of apiUrls) {
-      indexedUrlDocs.push({
-        batchId: batchDoc._id,
-        userId: user._id,
-        url,
-        routeUsed: "API_INDEXING",
-      });
+    const urlToRoute = new Map<string, "API_INDEXING" | "CRAWL_TRAP">();
+    for (const url of apiUrls) urlToRoute.set(url, "API_INDEXING");
+    for (const url of crawlTrapUrls) {
+      if (!urlToRoute.has(url)) urlToRoute.set(url, "CRAWL_TRAP");
     }
 
-    for (const url of crawlTrapUrls) {
+    for (const url of urls) {
       indexedUrlDocs.push({
         batchId: batchDoc._id,
         userId: user._id,
         url,
-        routeUsed: "CRAWL_TRAP",
+        routeUsed: urlToRoute.get(url) ?? "CRAWL_TRAP",
       });
     }
 
     const createdUrls = await IndexedUrl.insertMany(indexedUrlDocs, { session });
+    const urlIdByUrl = new Map(createdUrls.map((u) => [u.url, u._id]));
 
-    const jobs: Array<{
-      batchId: mongoose.Types.ObjectId;
-      indexedUrlId: mongoose.Types.ObjectId;
-      userId: mongoose.Types.ObjectId;
-      type: "API_INDEXING" | "CRAWL_TRAP" | "INDEX_NOW";
-      payload: { url: string; credentialId?: string };
-    }> = [];
+    const jobs: JobInsert[] = [];
+    const credId = credential?.id;
+    const credSource = credential?.source;
 
-    let urlIndex = 0;
-    for (const url of apiUrls) {
-      jobs.push({
-        batchId: batchDoc._id,
-        indexedUrlId: createdUrls[urlIndex]._id,
-        userId: user._id,
-        type: "API_INDEXING",
-        payload: {
-          url,
-          credentialId: activeCredential?._id.toString(),
-        },
-      });
-      urlIndex++;
-    }
+    for (const url of urls) {
+      const indexedUrlId = urlIdByUrl.get(url)!;
 
-    for (const url of crawlTrapUrls) {
-      const indexedUrlId = createdUrls[urlIndex]._id;
-      jobs.push({
-        batchId: batchDoc._id,
-        indexedUrlId,
-        userId: user._id,
-        type: "CRAWL_TRAP",
-        payload: { url },
-      });
-      jobs.push({
-        batchId: batchDoc._id,
-        indexedUrlId,
-        userId: user._id,
-        type: "INDEX_NOW",
-        payload: { url },
-      });
-      urlIndex++;
+      if (apiUrls.includes(url) && credential) {
+        jobs.push({
+          batchId: batchDoc._id,
+          indexedUrlId,
+          userId: user._id,
+          type: "API_INDEXING",
+          payload: {
+            url,
+            credentialId: credId,
+            credentialSource: credSource,
+          },
+        });
+        jobs.push({
+          batchId: batchDoc._id,
+          indexedUrlId,
+          userId: user._id,
+          type: "GOOGLE_VERIFY",
+          payload: {
+            url,
+            credentialId: credId,
+            credentialSource: credSource,
+          },
+          scheduledAt: new Date(Date.now() + 15_000),
+        });
+      }
+
+      if (mode === "google_instant" || mode === "maximum") {
+        jobs.push({
+          batchId: batchDoc._id,
+          indexedUrlId,
+          userId: user._id,
+          type: "DISCOVERY_PING",
+          payload: { url },
+        });
+        jobs.push({
+          batchId: batchDoc._id,
+          indexedUrlId,
+          userId: user._id,
+          type: "INDEX_NOW",
+          payload: { url },
+        });
+      } else if (crawlTrapUrls.includes(url)) {
+        jobs.push({
+          batchId: batchDoc._id,
+          indexedUrlId,
+          userId: user._id,
+          type: "CRAWL_TRAP",
+          payload: { url },
+        });
+        jobs.push({
+          batchId: batchDoc._id,
+          indexedUrlId,
+          userId: user._id,
+          type: "INDEX_NOW",
+          payload: { url },
+        });
+      }
     }
 
     await ProcessingJob.insertMany(jobs, { session });
@@ -142,7 +222,9 @@ export async function createIndexingBatch(
       totalUrls: urls.length,
       apiCount: apiUrls.length,
       crawlTrapCount: crawlTrapUrls.length,
-      indexNowCount: crawlTrapUrls.length,
+      indexNowCount,
+      mode,
+      hasGoogleCredential,
     };
   } catch (err) {
     await session.abortTransaction();

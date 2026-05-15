@@ -25,7 +25,7 @@ export default function SettingsPage() {
     api
       .get<{ credentials: Credential[] }>("/api/credentials")
       .then((d) => setCredentials(d.credentials))
-      .catch(console.error);
+      .catch(() => setError("Failed to load credentials."));
   }
 
   useEffect(() => {
@@ -56,8 +56,21 @@ export default function SettingsPage() {
 
   async function removeCredential(id: string) {
     if (!confirm("Delete this credential?")) return;
-    await api.delete(`/api/credentials/${id}`);
-    loadCredentials();
+    try {
+      await api.delete(`/api/credentials/${id}`);
+      loadCredentials();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to delete.");
+    }
+  }
+
+  async function toggleCredential(id: string, isActive: boolean) {
+    try {
+      await api.patch(`/api/credentials/${id}`, { isActive });
+      loadCredentials();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to update.");
+    }
   }
 
   return (
@@ -125,24 +138,39 @@ export default function SettingsPage() {
             {credentials.map((c) => (
               <div
                 key={c.id}
-                className="flex items-start justify-between rounded-lg border border-zinc-800 p-4"
+                className="flex flex-col gap-3 rounded-lg border border-zinc-800 p-4 sm:flex-row sm:items-start sm:justify-between"
               >
                 <div>
-                  <p className="font-medium">{c.label}</p>
+                  <p className="font-medium">
+                    {c.label}
+                    {!c.isActive && (
+                      <span className="ml-2 text-xs text-zinc-500">(inactive)</span>
+                    )}
+                  </p>
                   <p className="text-sm text-zinc-400">{c.propertyUrl}</p>
                   <p className="text-xs text-zinc-500">{c.clientEmail}</p>
                   <p className="mt-1 text-xs text-zinc-500">
                     Daily usage: {c.dailyUsage} / 200
                   </p>
                 </div>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  type="button"
-                  onClick={() => removeCredential(c.id)}
-                >
-                  Delete
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    type="button"
+                    onClick={() => toggleCredential(c.id, !c.isActive)}
+                  >
+                    {c.isActive ? "Deactivate" : "Activate"}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    type="button"
+                    onClick={() => removeCredential(c.id)}
+                  >
+                    Delete
+                  </Button>
+                </div>
               </div>
             ))}
           </CardContent>

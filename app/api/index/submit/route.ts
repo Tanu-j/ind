@@ -3,7 +3,8 @@ import { jsonError, jsonOk, jsonUnauthorized } from "@/lib/api/response";
 import { getSession } from "@/lib/auth/session";
 import { submitUrlsSchema, validateUrlCount } from "@/lib/validators/indexing";
 import { createIndexingBatch } from "@/lib/services/batch-processor";
-import { kickWorkerInDev } from "@/lib/services/worker-kick";
+import { kickWorkerAfterSubmit } from "@/lib/services/worker-kick";
+import { DEFAULT_INDEXING_MODE } from "@/lib/constants";
 import { parseUrlList } from "@/lib/utils";
 import { MAX_URLS_PER_BATCH } from "@/lib/constants";
 
@@ -28,8 +29,12 @@ export async function POST(request: Request) {
 
     await connectDB();
 
-    const result = await createIndexingBatch(session.userId, parsed.data.rawUrls);
-    kickWorkerInDev();
+    const result = await createIndexingBatch(
+      session.userId,
+      parsed.data.rawUrls,
+      parsed.data.mode ?? DEFAULT_INDEXING_MODE
+    );
+    kickWorkerAfterSubmit();
 
     return jsonOk(result, 202);
   } catch (err) {

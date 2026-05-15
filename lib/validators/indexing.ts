@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { MAX_URLS_PER_BATCH } from "@/lib/constants";
+import { INDEXING_MODES, MAX_URLS_PER_BATCH } from "@/lib/constants";
 
 export const submitUrlsSchema = z.object({
   rawUrls: z.string().min(1).max(2_000_000),
-  propertyUrl: z.string().url().optional(),
+  mode: z.enum(INDEXING_MODES).optional(),
 });
 
 export const gcpCredentialSchema = z.object({

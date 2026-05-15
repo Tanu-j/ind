@@ -1,9 +1,13 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
+import { Zap, Globe, Layers, Rocket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, ApiError } from "@/lib/api/client";
+import { cn } from "@/lib/utils";
+import type { IndexingMode } from "@/lib/constants";
 
 interface SubmitResult {
   batchId: string;
@@ -11,13 +15,52 @@ interface SubmitResult {
   apiCount: number;
   crawlTrapCount: number;
   indexNowCount: number;
+  mode: IndexingMode;
+  hasGoogleCredential: boolean;
 }
+
+interface AppConfig {
+  indexingModes: IndexingMode[];
+  defaultMode: IndexingMode;
+  platformGoogleEnabled: boolean;
+  maxUrlsPerBatch: number;
+}
+
+const MODE_INFO: Record<
+  IndexingMode,
+  { label: string; desc: string; icon: typeof Zap }
+> = {
+  google_instant: {
+    label: "Google Instant",
+    desc: "100% Google Indexing API + IndexNow + pings — fastest, like pro indexers",
+    icon: Zap,
+  },
+  hybrid: {
+    label: "Hybrid",
+    desc: "Split between Google API and crawl-trap discovery",
+    icon: Layers,
+  },
+  maximum: {
+    label: "Maximum",
+    desc: "Google API + crawl trap + IndexNow — all signals",
+    icon: Rocket,
+  },
+};
 
 export default function SubmitPage() {
   const [rawUrls, setRawUrls] = useState("");
+  const [mode, setMode] = useState<IndexingMode>("google_instant");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<SubmitResult | null>(null);
+  const [config, setConfig] = useState<AppConfig | null>(null);
+
+  useEffect(() => {
+    api.get<AppConfig>("/api/config").then((c) => {
+      setConfig(c);
+      setMode(c.defaultMode);
+    });
+  }, []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -25,7 +68,7 @@ export default function SubmitPage() {
     setResult(null);
     setLoading(true);
     try {
-      const data = await api.post<SubmitResult>("/api/index/submit", { rawUrls });
+      const data = await api.post<SubmitResult>("/api/index/submit", { rawUrls, mode });
       setResult(data);
       setRawUrls("");
     } catch (err) {
@@ -38,17 +81,52 @@ export default function SubmitPage() {
   const lineCount = rawUrls.split(/\n/).filter((l) => l.trim()).length;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Submit URLs</h1>
+        <h1 className="text-2xl font-bold text-white">Instant Google Indexing</h1>
         <p className="mt-1 text-zinc-400">
-          Hybrid split: ~30% Google Indexing API · ~70% crawl trap + IndexNow
+          Paste your page URLs — we notify Google Indexing API within seconds
         </p>
+        {config?.platformGoogleEnabled && (
+          <p className="mt-2 flex items-center gap-2 text-sm text-emerald-400">
+            <Globe className="h-4 w-4" />
+            Platform Google API ready — no GCP setup required
+          </p>
+        )}
       </div>
 
-      <Card>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {(config?.indexingModes ?? ["google_instant", "hybrid", "maximum"]).map((m) => {
+          const info = MODE_INFO[m];
+          const Icon = info.icon;
+          return (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={cn(
+                "rounded-xl border p-4 text-left transition-all",
+                mode === m
+                  ? "border-violet-500 bg-violet-500/10 ring-1 ring-violet-500/40"
+                  : "border-zinc-800 bg-zinc-900/40 hover:border-zinc-700"
+              )}
+            >
+              <Icon
+                className={cn(
+                  "mb-2 h-6 w-6",
+                  mode === m ? "text-violet-400" : "text-zinc-500"
+                )}
+              />
+              <p className="font-semibold text-zinc-100">{info.label}</p>
+              <p className="mt-1 text-xs text-zinc-500">{info.desc}</p>
+            </button>
+          );
+        })}
+      </div>
+
+      <Card className="border-violet-500/20">
         <CardHeader>
-          <CardTitle>Bulk URL list</CardTitle>
+          <CardTitle>Paste your URLs (one per line)</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-4">
@@ -60,37 +138,49 @@ export default function SubmitPage() {
             <textarea
               value={rawUrls}
               onChange={(e) => setRawUrls(e.target.value)}
-              placeholder="https://example.com/page-1&#10;https://example.com/page-2"
-              rows={14}
+              placeholder={"https://yoursite.com/blog/post-1\nhttps://yoursite.com/products/item-2"}
+              rows={16}
               className="w-full rounded-lg border border-zinc-700 bg-zinc-900/80 p-4 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-violet-500"
               disabled={loading}
             />
-            <p className="text-sm text-zinc-500">
-              {lineCount} line(s) · 1 credit per valid URL
-            </p>
-            <Button type="submit" disabled={loading || !rawUrls.trim()}>
-              {loading ? "Submitting…" : "Execute hybrid indexing"}
-            </Button>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-zinc-500">
+                {lineCount} URL(s) · {lineCount} credit(s)
+                {config ? ` · max ${config.maxUrlsPerBatch}` : ""}
+              </p>
+              <div className="flex gap-2">
+                <Link href="/dashboard/credits">
+                  <Button type="button" variant="secondary">
+                    Buy credits
+                  </Button>
+                </Link>
+                <Button type="submit" disabled={loading || !rawUrls.trim()}>
+                  {loading ? "Submitting to Google…" : "Index now"}
+                </Button>
+              </div>
+            </div>
           </form>
         </CardContent>
       </Card>
 
       {result && (
-        <Card className="border-violet-500/30 bg-violet-500/5">
+        <Card className="border-emerald-500/30 bg-emerald-500/5">
           <CardContent className="pt-6">
-            <p className="font-semibold text-violet-300">Batch queued</p>
-            <ul className="mt-3 space-y-1 text-sm text-zinc-300">
-              <li>Batch ID: {result.batchId}</li>
-              <li>Total: {result.totalUrls}</li>
-              <li>API lane: {result.apiCount}</li>
-              <li>Crawl trap: {result.crawlTrapCount}</li>
-              <li>IndexNow jobs: {result.indexNowCount}</li>
-            </ul>
-            <p className="mt-3 text-xs text-zinc-500">
-              Jobs process automatically in development. In production, run{" "}
-              <code className="text-violet-400">npm run worker</code> or cron{" "}
-              <code className="text-violet-400">POST /api/worker/process</code>.
+            <p className="flex items-center gap-2 font-semibold text-emerald-300">
+              <Zap className="h-5 w-5" />
+              Submitted — processing in real time
             </p>
+            <ul className="mt-3 space-y-1 text-sm text-zinc-300">
+              <li>Batch: {result.batchId}</li>
+              <li>Google API: {result.apiCount} URLs</li>
+              <li>IndexNow: {result.indexNowCount} signals</li>
+            </ul>
+            <Link
+              href={`/dashboard/batches/${result.batchId}`}
+              className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-violet-400 hover:underline"
+            >
+              Watch live Google status →
+            </Link>
           </CardContent>
         </Card>
       )}

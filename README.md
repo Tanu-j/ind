@@ -1,14 +1,15 @@
 # WhiteIndexWay
 
-Hybrid URL indexing platform built with **Next.js 16**, **MongoDB**, and a background worker queue.
+Instant Google URL indexing platform — paste URLs, spend credits, get live Google Indexing API status.
 
 ## Features
 
-- **Hybrid routing** — ~30% Google Indexing API, ~70% crawl-trap discovery + IndexNow
-- **User accounts** — JWT session cookies, credit-based submissions
-- **GCP credentials** — encrypted service account storage for Indexing API lane
-- **Batch tracking** — per-URL status, route type, and error messages
-- **MongoDB job queue** — `ProcessingJob` collection processed by `npm run worker`
+- **Google Instant mode (default)** — 100% Google Indexing API + IndexNow + discovery pings per URL
+- **Credit packages** — buy credits in-dashboard (`ALLOW_DEMO_CREDITS=true` for testing)
+- **Platform GCP key** — optional `PLATFORM_GCP_SERVICE_ACCOUNT_JSON` so users only paste URLs (like commercial indexers)
+- **Live status** — SUBMITTED → INDEXED with Google metadata verification
+- **Hybrid / Maximum modes** — crawl-trap RSS + multi-signal indexing
+- **MongoDB job queue** — parallel processing, auto-runs after submit
 
 ## Quick start
 
@@ -22,13 +23,16 @@ Edit `.env.local`:
 
 - `MONGODB_URI` — MongoDB connection string
 - `AUTH_SECRET` — at least 32 random characters
+- `APP_URL` — public URL of this app (e.g. `http://localhost:3000`) for crawl-trap RSS feed
+- `WORKER_SECRET` — required in production for `POST /api/worker/process`
 
 ### 2. Install & run
 
 ```bash
 npm install
-npm run seed    # optional: default seed domain
+npm run seed    # creates seed domain pointing at APP_URL/feeds/live-index.xml
 npm run dev     # http://localhost:3000
+npm test        # unit tests
 ```
 
 **Development:** URL batches process automatically when you submit (no separate worker needed).
@@ -83,8 +87,11 @@ scripts/        # DB seed
 
 - Run `npm run worker` as a separate process (PM2, systemd, or container)
 - Set `WORKER_SECRET` and call `POST /api/worker/process` from cron if you prefer HTTP triggers
-- Configure `INDEXNOW_HOST` and `INDEXNOW_KEY` for cross-engine pings
+- Set `APP_URL` to your production domain so crawl-trap RSS and feed pings use the correct URL
+- Configure `INDEXNOW_HOST` and `INDEXNOW_KEY` for cross-engine pings (serves `/{key}.txt` automatically)
+- Set `CREDENTIAL_ENCRYPTION_KEY` (32+ chars) separate from `AUTH_SECRET` in production
 - Add real seed domains via MongoDB `SeedDomain` collection or extend `scripts/seed.ts`
+- Crawl-trap RSS feed: `GET /feeds/live-index.xml`
 
 ## Scripts
 
@@ -96,3 +103,4 @@ scripts/        # DB seed
 | `npm run build` | Production build |
 | `npm run worker` | Process job queue (required in production) |
 | `npm run seed` | Seed default crawl-trap domain |
+| `npm test` | Run unit tests |

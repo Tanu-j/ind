@@ -1,11 +1,11 @@
 import { processPendingJobs } from "@/lib/services/job-worker";
 
-const BATCH_SIZE = 10;
+const BATCH_SIZE = 25;
 
 /**
  * Process queued jobs until the queue is empty or maxRounds is reached.
  */
-export async function drainPendingJobs(maxRounds = 100): Promise<number> {
+export async function drainPendingJobs(maxRounds = 200): Promise<number> {
   let total = 0;
   for (let i = 0; i < maxRounds; i++) {
     const processed = await processPendingJobs();
@@ -15,12 +15,16 @@ export async function drainPendingJobs(maxRounds = 100): Promise<number> {
   return total;
 }
 
-/** In development, process the queue without a separate `npm run worker` process. */
-export function kickWorkerInDev(): void {
-  if (process.env.NODE_ENV !== "development") return;
+/** Process queue immediately after submit (dev + production). */
+export function kickWorkerAfterSubmit(): void {
   if (process.env.WORKER_EXTERNAL === "true") return;
 
   void drainPendingJobs().catch((err) => {
-    console.error("[dev-worker] Failed to process jobs:", err);
+    console.error("[worker-kick] Failed to process jobs:", err);
   });
+}
+
+/** @deprecated Use kickWorkerAfterSubmit */
+export function kickWorkerInDev(): void {
+  kickWorkerAfterSubmit();
 }

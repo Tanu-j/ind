@@ -1,5 +1,5 @@
 import mongoose, { Schema, type Document, type Model } from "mongoose";
-import type { BatchStatus } from "@/lib/constants";
+import type { BatchStatus, IndexingMode } from "@/lib/constants";
 
 export interface IIndexBatch extends Document {
   _id: mongoose.Types.ObjectId;
@@ -8,6 +8,7 @@ export interface IIndexBatch extends Document {
   apiCount: number;
   crawlTrapCount: number;
   indexNowCount: number;
+  mode?: IndexingMode;
   status: BatchStatus;
   completedCount: number;
   failedCount: number;
@@ -22,6 +23,11 @@ const IndexBatchSchema = new Schema<IIndexBatch>(
     apiCount: { type: Number, default: 0 },
     crawlTrapCount: { type: Number, default: 0 },
     indexNowCount: { type: Number, default: 0 },
+    mode: {
+      type: String,
+      enum: ["google_instant", "hybrid", "maximum"],
+      default: "google_instant",
+    },
     status: {
       type: String,
       enum: ["PROCESSING", "COMPLETED", "FAILED", "PARTIAL"],

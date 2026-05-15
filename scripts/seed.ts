@@ -14,14 +14,20 @@ async function seed() {
     process.exit(0);
   }
 
+  const baseUrl = (
+    process.env.SEED_DOMAIN_BASE_URL ??
+    process.env.APP_URL ??
+    "http://localhost:3000"
+  ).replace(/\/$/, "");
+
   await SeedDomain.create({
     name: "WhiteIndexWay Discovery Hub",
-    baseUrl: process.env.SEED_DOMAIN_BASE_URL ?? "https://example.com",
+    baseUrl,
     feedPath: "/feeds/live-index.xml",
     isActive: true,
   });
 
-  console.log("[seed] Default seed domain created.");
+  console.log(`[seed] Default seed domain created (${baseUrl}/feeds/live-index.xml).`);
   process.exit(0);
 }
 
