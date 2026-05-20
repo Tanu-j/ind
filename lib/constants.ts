@@ -27,7 +27,13 @@ export const JOB_TYPES = [
 ] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 
-export const INDEXING_MODES = ["google_instant", "hybrid", "maximum", "turbo"] as const;
+export const INDEXING_MODES = [
+  "google_instant",
+  "hybrid",
+  "maximum",
+  "turbo",
+  "feed_discovery",
+] as const;
 export type IndexingMode = (typeof INDEXING_MODES)[number];
 
 export const DEFAULT_INDEXING_MODE: IndexingMode = "google_instant";

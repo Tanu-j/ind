@@ -7,6 +7,7 @@ Instant Google URL indexing platform — paste URLs, spend credits, track live G
 - **Google Instant** (default) — Indexing API + batch IndexNow + GSC sitemap + metadata verify
 - **Turbo** — all signals (2 credits/URL): API, crawl trap, IndexNow, GSC inspect, WebSub
 - **Hybrid / Maximum** — quota-friendly or full multi-signal modes
+- **Feed Discovery** — index without GCP: RSS, WebSub, IndexNow, and discovery pings
 - **Preflight checks** — HTTP 200, noindex, robots.txt, JobPosting schema hints
 - **Multi GCP key pool** — rotate platform keys for 200+ URLs/day per key
 - **Per-user IndexNow** — Bing/Yandex on the user's own domain
@@ -43,6 +44,7 @@ Add each platform service account as **Owner** in Google Search Console for targ
 | **turbo** | Everything above + crawl trap + WebSub + GSC inspect (2 credits/URL) |
 | **hybrid** | ~30% Google API, ~70% crawl trap (configurable) |
 | **maximum** | Google API + crawl trap + IndexNow on all URLs |
+| **feed_discovery** | No Google key — RSS crawl trap, WebSub, IndexNow & discovery pings (1 credit/URL) |
 
 ## New API routes
 

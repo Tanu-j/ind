@@ -12,6 +12,7 @@ import {
   CreditCard,
   Coins,
   Shield,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api/client";
@@ -19,6 +20,7 @@ import { api } from "@/lib/api/client";
 const nav = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard, short: "Home" },
   { href: "/dashboard/submit", label: "Index URLs", icon: Link2, short: "Index" },
+  { href: "/dashboard/live", label: "Live status", icon: Activity, short: "Live" },
   { href: "/dashboard/batches", label: "Batches", icon: History, short: "Batches" },
   { href: "/dashboard/credits", label: "Buy credits", icon: Coins, short: "Credits" },
   { href: "/dashboard/settings", label: "Settings", icon: Settings, short: "Settings" },

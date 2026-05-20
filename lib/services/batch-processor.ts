@@ -64,6 +64,9 @@ function planUrlRoutes(
   mode: IndexingMode,
   hasCredential: boolean
 ): { api: string[]; crawlTrap: string[] } {
+  if (mode === "feed_discovery") {
+    return { api: [], crawlTrap: urls };
+  }
   if (mode === "google_instant" || mode === "turbo") {
     return { api: urls, crawlTrap: mode === "turbo" ? urls : [] };
   }
@@ -238,7 +241,7 @@ export async function createIndexingBatch(
         }
       }
 
-      if (mode === "turbo") {
+      if (mode === "turbo" || mode === "feed_discovery") {
         jobs.push({
           batchId: batchDoc._id,
           indexedUrlId,
@@ -305,7 +308,7 @@ export async function createIndexingBatch(
       });
     }
 
-    if (mode === "turbo" || mode === "maximum") {
+    if (mode === "turbo" || mode === "maximum" || mode === "feed_discovery") {
       const feedUrl = `${(process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "")}/feeds/live-index.xml`;
       jobs.push({
         batchId: batchDoc._id,

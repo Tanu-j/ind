@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import { Zap, Globe, Layers, Rocket, Flame } from "lucide-react";
+import { Zap, Globe, Layers, Rocket, Flame, Rss } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, ApiError } from "@/lib/api/client";
@@ -52,6 +52,11 @@ const MODE_INFO: Record<
     label: "Turbo",
     desc: "Everything: Google API, GSC sitemap, batch IndexNow, crawl trap, WebSub (2 credits/URL)",
     icon: Flame,
+  },
+  feed_discovery: {
+    label: "Feed Discovery",
+    desc: "No Google key needed — RSS crawl trap, WebSub, IndexNow & discovery pings (1 credit/URL)",
+    icon: Rss,
   },
 };
 
@@ -103,8 +108,14 @@ export default function SubmitPage() {
         )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {(config?.indexingModes ?? ["google_instant", "hybrid", "maximum", "turbo"]).map((m) => {
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        {(config?.indexingModes ?? [
+          "google_instant",
+          "hybrid",
+          "maximum",
+          "turbo",
+          "feed_discovery",
+        ]).map((m) => {
           const info = MODE_INFO[m] ?? MODE_INFO.google_instant;
           const Icon = info.icon;
           return (
@@ -193,12 +204,20 @@ export default function SubmitPage() {
               ) : null}
               {result.creditsUsed ? <li>Credits used: {result.creditsUsed}</li> : null}
             </ul>
-            <Link
-              href={`/dashboard/batches/${result.batchId}`}
-              className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-violet-400 hover:underline"
-            >
-              Watch live Google status →
-            </Link>
+            <div className="mt-4 flex flex-wrap gap-4 text-sm font-medium">
+              <Link
+                href="/dashboard/live"
+                className="inline-flex items-center gap-2 text-violet-400 hover:underline"
+              >
+                Open live status →
+              </Link>
+              <Link
+                href={`/dashboard/batches/${result.batchId}`}
+                className="inline-flex items-center gap-2 text-zinc-400 hover:underline"
+              >
+                View batch →
+              </Link>
+            </div>
           </CardContent>
         </Card>
       )}

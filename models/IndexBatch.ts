@@ -25,7 +25,7 @@ const IndexBatchSchema = new Schema<IIndexBatch>(
     indexNowCount: { type: Number, default: 0 },
     mode: {
       type: String,
-      enum: ["google_instant", "hybrid", "maximum", "turbo"],
+      enum: ["google_instant", "hybrid", "maximum", "turbo", "feed_discovery"],
       default: "google_instant",
     },
     status: {
